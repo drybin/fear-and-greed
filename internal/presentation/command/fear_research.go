@@ -7,10 +7,10 @@ import (
     "github.com/urfave/cli/v2"
 )
 
-func NewHelloWorldCommand(service usecase.IHelloWorld) *cli.Command {
+func NewFearResearchCommand(service usecase.IFearResearch) *cli.Command {
     return &cli.Command{
-        Name:  "hello-world",
-        Usage: "hello-world command",
+        Name:  "fear-research",
+        Usage: "fear-research command",
         Flags: []cli.Flag{},
         Action: func(c *cli.Context) error {
             return service.Process(context.Background())

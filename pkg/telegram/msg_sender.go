@@ -3,7 +3,7 @@ package telegram
 import (
     "fmt"
     
-    "github.com/drybin/fead-and-greed/pkg/wrap"
+    "github.com/drybin/fear-and-greed/pkg/wrap"
     "github.com/go-resty/resty/v2"
 )
 

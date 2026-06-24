@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan Markets — сравнение алгоритмов</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2332; --text:#e7ecf3; --muted:#8b9cb3; --accent:#3d8bfd; --pos:#3dd68c; --neg:#f87171; --border:#2a3544; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 1.5rem; line-height: 1.5; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); font-size: .9rem; margin-bottom: 1.25rem; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; align-items: end; }
+  label { display: flex; flex-direction: column; gap: .35rem; font-size: .8rem; color: var(--muted); }
+  select { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: .45rem .6rem; border-radius: 6px; min-width: 10rem; }
+  .grid { display: grid; grid-template-columns: 1fr 320px; gap: 1rem; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; }
+  th, td { padding: .55rem .65rem; text-align: left; border-bottom: 1px solid var(--border); font-size: .88rem; }
+  th { color: var(--muted); font-weight: 600; }
+  tr:hover td { background: rgba(61,139,253,.06); cursor: pointer; }
+  .pnl-pos { color: var(--pos); }
+  .pnl-neg { color: var(--neg); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+  .card h2 { margin: 0 0 .5rem; font-size: 1rem; }
+  .card p { margin: 0 0 .5rem; font-size: .88rem; color: var(--muted); }
+  .tags { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+  .tag { font-size: .7rem; background: var(--bg); padding: .15rem .45rem; border-radius: 4px; color: var(--muted); }
+  .empty { color: var(--muted); padding: 2rem; text-align: center; }
+  .mode-hint { font-size: .8rem; color: var(--muted); margin-bottom: .75rem; }
+  .trades-table { width: 100%; margin-top: .75rem; font-size: .75rem; }
+  .trades-table th, .trades-table td { padding: .35rem .4rem; }
+  .ctx { font-size: .7rem; color: var(--muted); margin-top: .25rem; word-break: break-all; }
+  .tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0 .5rem; align-items: center; }
+  .tab { background: var(--bg); border: 1px solid var(--border); color: var(--muted); padding: .35rem .75rem; border-radius: 6px; cursor: pointer; font-size: .8rem; }
+  .tab.active { color: var(--text); border-color: var(--accent); }
+  .tab-open { margin-left: auto; border-color: var(--accent); color: var(--accent); }
+  #chartWrap { width: 100%; height: 360px; margin-top: .25rem; }
+  .chart-hint { font-size: .7rem; color: var(--muted); margin: .5rem 0 0; }
+</style>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<h1>Сравнение алгоритмов</h1>
+<p class="sub" id="meta">Загрузка…</p>
+<div class="toolbar">
+  <label>Период<select id="period"><option value="">Все</option></select></label>
+  <label>Символ<select id="symbol"><option value="">Все</option></select></label>
+  <label>Режим<select id="mode">
+    <option value="by_algo">Сравнить алгоритмы</option>
+    <option value="by_symbol">Сравнить символы</option>
+    <option value="matrix">Вся матрица</option>
+  </select></label>
+  <label>Сортировка<select id="sort">
+    <option value="profit_pct">По profit %</option>
+    <option value="trade_count">По сделкам</option>
+    <option value="profit_usd">По profit $</option>
+  </select></label>
+</div>
+<p class="mode-hint" id="modeHint"></p>
+<div class="grid">
+  <div>
+    <table><thead><tr id="headRow"></tr></thead><tbody id="body"></tbody></table>
+    <p class="empty" id="empty" style="display:none">Нет данных. Запустите scan-markets с --report-dir reports</p>
+  </div>
+  <div class="card" id="detail"><h2>Алгоритм</h2><p>Клик по строке таблицы</p></div>
+</div>
+<script id="payload" type="application/json">{{.DataJSON}}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('payload').textContent);
+const results = DATA.results || [];
+const catalog = DATA.catalog || { algorithms: {} };
+const manifest = DATA.manifest || {};
+const periodSel = document.getElementById('period');
+const symbolSel = document.getElementById('symbol');
+const modeSel = document.getElementById('mode');
+const sortSel = document.getElementById('sort');
+const body = document.getElementById('body');
+const headRow = document.getElementById('headRow');
+const empty = document.getElementById('empty');
+const detail = document.getElementById('detail');
+const meta = document.getElementById('meta');
+const modeHint = document.getElementById('modeHint');
+const periodLabels = { full: 'весь период', last_2_years: 'последние 2 года', current_year: 'текущий год' };
+function uniq(a){ return [...new Set(a)].sort(); }
+function initFilters(){
+  uniq(results.map(r=>r.period)).forEach(p=>{ const o=document.createElement('option'); o.value=p; o.textContent=periodLabels[p]||p; periodSel.appendChild(o); });
+  uniq(results.map(r=>r.symbol)).forEach(s=>{ const o=document.createElement('option'); o.value=s; o.textContent=s; symbolSel.appendChild(o); });
+  if (periodSel.querySelector('[value=full]')) periodSel.value='full';
+  const ts = manifest.last_run_at ? new Date(manifest.last_run_at).toLocaleString('ru-RU') : '—';
+  meta.textContent = 'Последний прогон: '+ts+' · записей: '+results.length;
+}
+function fmtPct(x){ if(x==null||isNaN(x))return 'n/a'; const c=x>=0?'pnl-pos':'pnl-neg'; return '<span class="'+c+'">'+(x>=0?'+':'')+x.toFixed(2)+'%</span>'; }
+function fmtUsd(x){ if(x==null||isNaN(x))return 'n/a'; const c=x>=0?'pnl-pos':'pnl-neg'; return '<span class="'+c+'">$'+x.toFixed(2)+'</span>'; }
+function algoName(id){ return (catalog.algorithms[id]||{}).name || id; }
+function filtered(){ let rows=results.slice(); if(periodSel.value) rows=rows.filter(r=>r.period===periodSel.value); if(symbolSel.value) rows=rows.filter(r=>r.symbol===symbolSel.value); return rows; }
+function sortRows(rows,key){ return rows.sort((a,b)=>{ const av=key==='profit_pct'?a.best.profit_pct:key==='profit_usd'?a.best.profit_usd:a.best.trade_count; const bv=key==='profit_pct'?b.best.profit_pct:key==='profit_usd'?b.best.profit_usd:b.best.trade_count; return bv-av; }); }
+function rowKey(r){ return r.algo+'|'+r.symbol+'|'+r.period; }
+function rowHtml(r,primary){
+  const param=r.best.param_label||'—';
+  const k=rowKey(r);
+  if(primary==='algo') return '<tr data-key="'+k+'"><td>'+algoName(r.algo)+'</td><td>'+param+'</td><td>'+fmtPct(r.best.profit_pct)+'</td><td>'+fmtUsd(r.best.profit_usd)+'</td><td>'+r.best.trade_count+'</td><td>'+r.symbol+'</td></tr>';
+  return '<tr data-key="'+k+'"><td>'+r.symbol+'</td><td>'+param+'</td><td>'+fmtPct(r.best.profit_pct)+'</td><td>'+fmtUsd(r.best.profit_usd)+'</td><td>'+r.best.trade_count+'</td><td>'+algoName(r.algo)+'</td></tr>';
+}
+function matrixRow(r){ const pl=periodLabels[r.period]||r.period; const k=rowKey(r); return '<tr data-key="'+k+'"><td>'+algoName(r.algo)+'</td><td>'+r.symbol+'</td><td>'+pl+'</td><td>'+(r.best.param_label||'—')+'</td><td>'+fmtPct(r.best.profit_pct)+'</td><td>'+fmtUsd(r.best.profit_usd)+'</td><td>'+r.best.trade_count+'</td></tr>'; }
+function render(){
+  const mode=modeSel.value; let rows=filtered(); const sk=sortSel.value;
+  if(mode==='by_algo'){ modeHint.textContent='Строки = алгоритмы. Укажите символ и период.'; headRow.innerHTML='<th>Алгоритм</th><th>Параметр</th><th>Profit %</th><th>Profit $</th><th>Сделки</th><th>Символ</th>'; rows=sortRows(rows,sk); body.innerHTML=rows.map(r=>rowHtml(r,'algo')).join(''); }
+  else if(mode==='by_symbol'){ modeHint.textContent='Строки = символы. Укажите алгоритм через фильтр матрицы или смотрите все.'; headRow.innerHTML='<th>Символ</th><th>Параметр</th><th>Profit %</th><th>Profit $</th><th>Сделки</th><th>Алгоритм</th>'; rows=sortRows(rows,sk); body.innerHTML=rows.map(r=>rowHtml(r,'symbol')).join(''); }
+  else { modeHint.textContent='Все комбинации algo × symbol × period.'; headRow.innerHTML='<th>Алгоритм</th><th>Символ</th><th>Период</th><th>Параметр</th><th>Profit %</th><th>Profit $</th><th>Сделки</th>'; rows=sortRows(rows,sk); body.innerHTML=rows.map(matrixRow).join(''); }
+  empty.style.display=rows.length?'none':'block'; document.querySelector('table').style.display=rows.length?'':'none';
+}
+function fmtCtx(ctx){
+  if(!ctx||!Object.keys(ctx).length) return '';
+  return Object.keys(ctx).sort().map(k=>k+': '+Number(ctx[k]).toFixed(4)).join(' · ');
+}
+function fmtEvents(events){
+  if(!events||!events.length) return '';
+  return events.map(e=>{
+    const ts=new Date(e.time).toLocaleString('ru-RU',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    return (e.kind||'event')+' '+Math.round((e.fraction||0)*100)+'% @'+Number(e.price).toFixed(2)+' ('+ts+')';
+  }).join(' · ');
+}
+function tradesHtml(trades){
+  if(!trades||!trades.length) return '<p>Нет закрытых сделок в отчёте.</p>';
+  let h='<table class="trades-table"><thead><tr><th>Вход</th><th>Выход</th><th>PnL</th><th>Причина</th></tr></thead><tbody>';
+  trades.forEach(t=>{
+    const en=new Date(t.entry_time).toLocaleString('ru-RU',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    const ex=new Date(t.exit_time).toLocaleString('ru-RU',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    h+='<tr><td>'+en+'<br>@'+t.entry_price.toFixed(2)+'</td><td>'+ex+'<br>@'+t.exit_price.toFixed(2)+'</td><td>'+fmtPct(t.pnl_pct)+'</td><td>'+(t.exit_reason||'—')+'</td></tr>';
+    const ec=fmtCtx(t.entry_context);
+    if(ec) h+='<tr><td colspan="4" class="ctx">вход: '+ec+'</td></tr>';
+    const ev=fmtEvents(t.events);
+    if(ev) h+='<tr><td colspan="4" class="ctx">частичные: '+ev+'</td></tr>';
+    const xc=fmtCtx(t.exit_context);
+    if(xc) h+='<tr><td colspan="4" class="ctx">выход: '+xc+'</td></tr>';
+  });
+  return h+'</tbody></table>';
+}
+function showResult(r){
+  currentResult = r;
+  activeTab = 'trades';
+  const a=catalog.algorithms[r.algo]||{};
+  const tags=(a.tags||[]).map(t=>'<span class="tag">'+t+'</span>').join('');
+  const pl=periodLabels[r.period]||r.period;
+  detail.innerHTML=
+    '<h2>'+(a.name||r.algo)+'</h2>'+
+    '<p><strong>'+(a.short||'')+'</strong></p>'+
+    '<p>'+r.symbol+' · '+pl+' · '+(r.best.param_label||'')+'</p>'+
+    (a.summary?'<p>'+a.summary+'</p>':'')+
+    '<div class="tags">'+tags+'</div>'+
+    '<div class="tabs"><button type="button" class="tab active" data-tab="trades">Сделки</button><button type="button" class="tab" data-tab="chart">График</button><button type="button" class="tab tab-open" id="openChartBtn">↗ Окно</button></div>'+
+    '<div id="panelTrades"><h3 style="margin-top:0;font-size:.9rem">Сделки ('+(r.trades?r.trades.length:0)+')</h3>'+tradesHtml(r.trades)+'</div>'+
+    '<div id="panelChart" style="display:none"><div id="chartWrap"></div><p class="chart-hint">График 4h OHLC. Откройте через HTTP: <code>python3 -m http.server 8000</code> → <code>/reports/report.html</code></p></div>';
+  detail.querySelectorAll('.tab[data-tab]').forEach(btn=>{
+    btn.addEventListener('click',()=>setDetailTab(btn.dataset.tab));
+  });
+  document.getElementById('openChartBtn').addEventListener('click',()=>openChartWindow(r));
+  destroyChart();
+}
+function chartPageUrl(r){
+  const q=new URLSearchParams({algo:r.algo,symbol:r.symbol,period:r.period});
+  return 'chart.html?'+q.toString();
+}
+function openChartWindow(r){
+  const url=chartPageUrl(r);
+  const w=screen.availWidth,h=screen.availHeight;
+  window.open(url,'scanChart_'+rowKey(r),
+    'width='+w+',height='+h+',left=0,top=0,resizable=yes,scrollbars=no');
+}
+let currentResult=null;
+let activeTab='trades';
+let chartInstance=null;
+let chartSeries=null;
+const CHART_INTERVAL_MIN=240;
+function ohlcUrl(r){
+  return 'data/'+r.algo+'/'+r.symbol+'__'+r.period+'__ohlc_'+CHART_INTERVAL_MIN+'m.json';
+}
+function destroyChart(){
+  if(chartInstance){ chartInstance.remove(); chartInstance=null; chartSeries=null; }
+  const w=document.getElementById('chartWrap');
+  if(w) w.innerHTML='';
+}
+function setDetailTab(name){
+  activeTab=name;
+  detail.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+  document.getElementById('panelTrades').style.display=name==='trades'?'':'none';
+  document.getElementById('panelChart').style.display=name==='chart'?'':'none';
+  if(name==='chart'&&currentResult) loadChart(currentResult);
+}
+function tradeMarkers(trades){
+  const markers=[];
+  (trades||[]).forEach((t,i)=>{
+    const et=Math.floor(new Date(t.entry_time).getTime()/1000);
+    const xt=Math.floor(new Date(t.exit_time).getTime()/1000);
+    markers.push({time:et,position:'belowBar',color:'#3dd68c',shape:'arrowUp',text:'B'+(i+1)});
+    markers.push({time:xt,position:'aboveBar',color:'#f87171',shape:'arrowDown',text:'S'+(i+1)});
+    (t.events||[]).forEach(e=>{
+      markers.push({time:Math.floor(new Date(e.time).getTime()/1000),position:'aboveBar',color:'#fbbf24',shape:'circle',text:'P'});
+    });
+  });
+  markers.sort((a,b)=>a.time-b.time);
+  return markers;
+}
+async function loadChart(r){
+  const wrap=document.getElementById('chartWrap');
+  if(!wrap) return;
+  destroyChart();
+  wrap.innerHTML='<p class="ctx">Загрузка…</p>';
+  const url=ohlcUrl(r);
+  try{
+    const res=await fetch(url);
+    if(!res.ok) throw new Error(res.status+' '+res.statusText);
+    const ohlc=await res.json();
+    wrap.innerHTML='';
+    if(!ohlc.candles||!ohlc.candles.length){
+      wrap.innerHTML='<p class="ctx">Нет OHLC данных.</p>';
+      return;
+    }
+    chartInstance=LightweightCharts.createChart(wrap,{
+      layout:{background:{color:'#1a2332'},textColor:'#e7ecf3'},
+      grid:{vertLines:{color:'#2a3544'},horzLines:{color:'#2a3544'}},
+      rightPriceScale:{borderColor:'#2a3544'},
+      timeScale:{borderColor:'#2a3544',timeVisible:true,secondsVisible:false},
+      crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    });
+    chartSeries=chartInstance.addCandlestickSeries({
+      upColor:'#3dd68c',downColor:'#f87171',borderVisible:false,
+      wickUpColor:'#3dd68c',wickDownColor:'#f87171',
+    });
+    chartSeries.setData(ohlc.candles.map(c=>({time:c.t,open:c.o,high:c.h,low:c.l,close:c.c})));
+    const mk=tradeMarkers(r.trades);
+    if(mk.length) chartSeries.setMarkers(mk);
+    chartInstance.timeScale().fitContent();
+    new ResizeObserver(()=>{
+      if(chartInstance) chartInstance.applyOptions({width:wrap.clientWidth});
+    }).observe(wrap);
+  }catch(e){
+    wrap.innerHTML='<p class="ctx">Не удалось загрузить '+url+' ('+e.message+'). Запустите HTTP-сервер из корня проекта.</p>';
+  }
+}
+const resultMap = Object.fromEntries(results.map(r=>[rowKey(r), r]));
+body.addEventListener('click',e=>{ const tr=e.target.closest('tr'); if(tr&&tr.dataset.key&&resultMap[tr.dataset.key]) showResult(resultMap[tr.dataset.key]); });
+[periodSel,symbolSel,modeSel,sortSel].forEach(el=>el.addEventListener('change',render));
+initFilters(); render();
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+{
+  "algorithms": {
+    "rise": {
+      "id": "rise",
+      "name": "Random Long + Take Profit",
+      "short": "Случайный long, выход по +N%",
+      "summary": "Каждый день случайная минута входа в long на весь депозит. Выход при close ≥ entry × (1 + target%). Перебор target 1–100% для выбора лучшего. Базовый бенчмарк «удача на растущем рынке».",
+      "tags": ["long", "random", "benchmark"],
+      "doc_section": "5.1"
+    },
+    "rise-2d-profit": {
+      "id": "rise-2d-profit",
+      "name": "Random Long + 2D / Target",
+      "short": "Long: target до 48h, после +2%",
+      "summary": "Случайный daily long как rise. До 48h — выход по sweep target%. После 48h — выход при close ≥ entry+2%; иначе ждём +2%. Стопа нет. Sweep target 1–100%.",
+      "tags": ["long", "random", "benchmark"],
+      "doc_section": "5.1b"
+    },
+    "drop": {
+      "id": "drop",
+      "name": "Random Short 1×",
+      "short": "Случайный short 1×, cover по −N%",
+      "summary": "Случайный вход в short без плеча. Закрытие при падении цены на target% от входа. Sweep target% как у rise.",
+      "tags": ["short", "random", "benchmark"],
+      "doc_section": "5.2"
+    },
+    "drop-margin": {
+      "id": "drop-margin",
+      "name": "Short с плечом",
+      "short": "Short 2×, фикс. margin, sweep target",
+      "summary": "Случайный short с заданным плечом и маржой. Учитывает ликвидации и банкротство. Sweep целевого % профита.",
+      "tags": ["short", "margin", "leverage"],
+      "doc_section": "5.3"
+    },
+    "trend": {
+      "id": "trend",
+      "name": "SMA(50) Trend Long/Short",
+      "short": "SMA50 1d: бычий → long, медвежий → short",
+      "summary": "По дневному close vs SMA(50): bull → long, bear → short $30 1×. Sweep long% × short% для лучшей пары таргетов.",
+      "tags": ["trend", "sma", "long", "short"],
+      "doc_section": "5.4"
+    },
+    "trend-long": {
+      "id": "trend-long",
+      "name": "SMA(50) Long Only",
+      "short": "SMA50 1d: только long в бычьи дни",
+      "summary": "Вход long только когда предыдущий день close > SMA(50). Bear-дни пропускаются. Sweep long target 1–100%.",
+      "tags": ["trend", "sma", "long"],
+      "doc_section": "5.5"
+    },
+    "trend-long-sma": {
+      "id": "trend-long-sma",
+      "name": "SMA Sweep Long",
+      "short": "SMA 10..100 × long target sweep",
+      "summary": "Перебор периода SMA (10–100, шаг 10) и long target%. Long только в бычьем режиме по выбранной SMA на дневках.",
+      "tags": ["trend", "sma", "sweep", "long"],
+      "doc_section": "5.6"
+    },
+    "trend-long-sma-retest": {
+      "id": "trend-long-sma-retest",
+      "name": "SMA Breakout + Retest",
+      "short": "Пробой SMA close → retest → long",
+      "summary": "Close выше SMA, затем retest в зоне eps% в течение lookahead свечей. Sweep SMA × long target%.",
+      "tags": ["trend", "sma", "retest", "long"],
+      "doc_section": "5.7"
+    },
+    "crt-long": {
+      "id": "crt-long",
+      "name": "CRT Long (4H + 15M)",
+      "short": "4H импульс + 15M discount entry",
+      "summary": "Candle Range Theory: импульс на 4H (ATR×1.5, volume×1.5), вход в discount на 15M. TP1 50% @ RangeHigh, TP2 swing или 2R.",
+      "tags": ["long", "mtf", "crt"],
+      "needs_volume": true,
+      "doc_section": "5.8"
+    },
+    "breakout-retest-long": {
+      "id": "breakout-retest-long",
+      "name": "Breakout Retest Long v1",
+      "short": "15M swing break → retest → long",
+      "summary": "Пробой swing high N=3 на 15M, retest зоны, подтверждение. Выходы в стиле CRT: TP1/TP2, SL по ATR.",
+      "tags": ["long", "breakout", "retest"],
+      "doc_section": "5.9"
+    },
+    "breakout-retest-long-v2": {
+      "id": "breakout-retest-long-v2",
+      "name": "Breakout Retest Long v2",
+      "short": "EMA200 + volume, retest 3–12, TP 1R/2R",
+      "summary": "Тренд: EMA200 на 1H и 15M. Пробой swing N=5 с volume filter, retest 3–12 баров, вход next open. TP 50% @ 1R, 50% @ 2R, BE после TP1.",
+      "tags": ["long", "breakout", "retest", "ema200"],
+      "needs_volume": true,
+      "doc_section": "5.10"
+    },
+    "fib-pullback-long": {
+      "id": "fib-pullback-long",
+      "name": "Fib Pullback Long v1",
+      "short": "1H BOS + fib 0.5–0.618, вход 15M",
+      "summary": "Структура на 1H: swing N=5, BOS, leg ≥6%. Откат в fib 0.5–0.618 на 15M, вход close > EMA20 и > prev high. TP 1R/2R, cancel < fib 0.786.",
+      "tags": ["long", "mtf", "fib", "bos"],
+      "doc_section": "5.11"
+    },
+    "fib-pullback-long-v2": {
+      "id": "fib-pullback-long-v2",
+      "name": "Fib Pullback Long v2",
+      "short": "BOS+vol, TP1 impulseHigh, trail EMA20",
+      "summary": "Ужесточённый v1: BOS с ATR-buffer, volume на 1H, impulse sweep 6/8/10%. Touch ≠ confirm bar, micro-BOS за 3 бара. TP1 @ impulseHigh, trail EMA20, TP2 @ 2R.",
+      "tags": ["long", "mtf", "fib", "bos"],
+      "needs_volume": true,
+      "doc_section": "5.12"
+    },
+    "fib-pullback-trend-v1": {
+      "id": "fib-pullback-trend-v1",
+      "name": "Fib Pullback Trend v1",
+      "short": "Spec BOS + fib retest",
+      "summary": "По спеке: 1H BOS (close>last swing high), legHigh=high BOS-бара, fib retest 15M, SL=fib786, выходы по low. Sweep: impulse 5/8/10/15%, pivot 3/5/7, zone, maxWait 24/48/96.",
+      "tags": ["long", "mtf", "fib", "spec"],
+      "doc_section": "5.13"
+    },
+    "nr7-trend-breakout-v1": {
+      "id": "nr7-trend-breakout-v1",
+      "name": "NR7 Trend Breakout v1",
+      "short": "1H NR compression breakout",
+      "summary": "1H: bull trend + NR (min range за N баров) + range<ATR×mult. Вход: close>nrHigh и range>ATR. SL=nrLow, TP 1R/2R. Sweep: NR 5/7/10, ATR×0.6/0.8/1.0, lifetime 6/12/24, trend filters.",
+      "tags": ["long", "nr7", "volatility", "breakout", "1h"],
+      "doc_section": "5.14"
+    },
+    "volatility-compression-breakout-v1": {
+      "id": "volatility-compression-breakout-v1",
+      "name": "Volatility Compression Breakout v1",
+      "short": "1H ATR-min compression breakout",
+      "summary": "1H: ATR14=min за окно + atr<avg×factor, диапазон high/low за N баров. Вход: close>compHigh и range>ATR×expansion. SL=compLow, TP 1R/2R. Sweep: compWin 50/100/200, range 5/10/20, ATR×0.5-0.8, expansion 1.2-2.0.",
+      "tags": ["long", "volatility", "compression", "breakout", "1h"],
+      "doc_section": "5.15"
+    },
+    "liquidity-sweep-long": {
+      "id": "liquidity-sweep-long",
+      "name": "Liquidity Sweep Long v1",
+      "short": "1H sweep lowest(20) + confirm",
+      "summary": "1H: close>EMA200, low пробивает min(low,20) и close возвращается выше. Вход на close следующей свечи выше high sweep-бара. SL = low sweep, TP = 2R.",
+      "tags": ["long", "liquidity", "sweep", "1h"],
+      "doc_section": "5.16"
+    },
+    "liquidity-sweep-long-v2": {
+      "id": "liquidity-sweep-long-v2",
+      "name": "Liquidity Sweep Long v2",
+      "short": "1H swing pivot sweep + confirm",
+      "summary": "Swing pivot low (N=2): прокол уровня + close выше. EMA200, confirm close>sweep high. SL sweep low, TP 2R. Уровень живёт до 48 баров.",
+      "tags": ["long", "liquidity", "sweep", "swing", "1h"],
+      "doc_section": "5.17"
+    },
+    "liquidity-sweep-long-v3": {
+      "id": "liquidity-sweep-long-v3",
+      "name": "Liquidity Sweep Long v3",
+      "short": "1H equal lows pool + sweep",
+      "summary": "Два pivot low в пределах 0.2% (≤24 бара) → liquidity pool. Прокол pool + close выше, EMA200, confirm. SL sweep low, TP 2R.",
+      "tags": ["long", "liquidity", "sweep", "equal-lows", "1h"],
+      "doc_section": "5.18"
+    },
+    "liquidity-sweep-long-v4": {
+      "id": "liquidity-sweep-long-v4",
+      "name": "Liquidity Sweep Long v4",
+      "short": "Swing sweep + displacement",
+      "summary": "Swing pivot sweep (как v2) + вход по displacement: бычья свеча, range > ATR14×1.5 (в день sweep или ≤3 бара). EMA200, SL sweep low, TP 2R.",
+      "tags": ["long", "liquidity", "sweep", "ict", "displacement", "1h"],
+      "doc_section": "5.19"
+    },
+    "liquidity-sweep-long-v5": {
+      "id": "liquidity-sweep-long-v5",
+      "name": "Liquidity Sweep Long v5",
+      "short": "Swing sweep + FVG retest",
+      "summary": "Swing pivot sweep + displacement импульс создаёт bullish FVG (low[i]>high[i-2], ≤5 баров). Вход на ретесте FVG (бычье закрытие, ≤12 баров). EMA200, SL sweep low, TP 2R.",
+      "tags": ["long", "liquidity", "sweep", "ict", "fvg", "smc", "1h"],
+      "doc_section": "5.20"
+    }
+  }
+}

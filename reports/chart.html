@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>График — Scan Markets</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2332; --text:#e7ecf3; --muted:#8b9cb3; --accent:#3d8bfd; --border:#2a3544; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+  header { flex: 0 0 auto; display: flex; align-items: center; gap: .75rem; padding: .5rem 1rem; background: var(--card); border-bottom: 1px solid var(--border); }
+  header h1 { font-size: .95rem; margin: 0; font-weight: 600; flex: 1; }
+  header p { margin: 0; font-size: .75rem; color: var(--muted); }
+  .btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: .35rem .7rem; border-radius: 6px; cursor: pointer; font-size: .8rem; }
+  .btn:hover { border-color: var(--accent); }
+  #main { flex: 1; min-height: 0; position: relative; }
+  #chartWrap { width: 100%; height: 100%; }
+  .err { padding: 2rem; color: var(--muted); font-size: .9rem; }
+</style>
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<header>
+  <h1 id="title">График</h1>
+  <p id="legend">B ▲ вход · S ▼ выход · P ● частичный</p>
+  <button type="button" class="btn" id="fsBtn" title="Полный экран">⛶</button>
+  <button type="button" class="btn" id="closeBtn" title="Закрыть">✕</button>
+</header>
+<div id="main"><div id="chartWrap"></div></div>
+<script>
+const CHART_INTERVAL_MIN = 240;
+const periodLabels = { full: 'весь период', last_2_years: 'последние 2 года', current_year: 'текущий год' };
+const params = new URLSearchParams(location.search);
+const algo = params.get('algo') || '';
+const symbol = params.get('symbol') || '';
+const period = params.get('period') || '';
+let chartInstance = null;
+
+function ohlcUrl() {
+  return 'data/' + algo + '/' + symbol + '__' + period + '__ohlc_' + CHART_INTERVAL_MIN + 'm.json';
+}
+function resultUrl() {
+  return 'data/' + algo + '/' + symbol + '__' + period + '.json';
+}
+function tradeMarkers(trades) {
+  const markers = [];
+  (trades || []).forEach((t, i) => {
+    const et = Math.floor(new Date(t.entry_time).getTime() / 1000);
+    const xt = Math.floor(new Date(t.exit_time).getTime() / 1000);
+    markers.push({ time: et, position: 'belowBar', color: '#3dd68c', shape: 'arrowUp', text: 'B' + (i + 1) });
+    markers.push({ time: xt, position: 'aboveBar', color: '#f87171', shape: 'arrowDown', text: 'S' + (i + 1) });
+    (t.events || []).forEach(e => {
+      markers.push({ time: Math.floor(new Date(e.time).getTime() / 1000), position: 'aboveBar', color: '#fbbf24', shape: 'circle', text: 'P' });
+    });
+  });
+  markers.sort((a, b) => a.time - b.time);
+  return markers;
+}
+function showError(msg) {
+  document.getElementById('main').innerHTML = '<p class="err">' + msg + '</p>';
+}
+async function init() {
+  if (!algo || !symbol || !period) {
+    showError('Укажите параметры: chart.html?algo=…&symbol=…&period=…');
+    return;
+  }
+  document.getElementById('title').textContent = symbol + ' · ' + (periodLabels[period] || period) + ' · ' + algo;
+  document.title = symbol + ' — ' + algo;
+  const wrap = document.getElementById('chartWrap');
+  try {
+    const [ohlcRes, resultRes] = await Promise.all([fetch(ohlcUrl()), fetch(resultUrl())]);
+    if (!ohlcRes.ok) throw new Error('OHLC ' + ohlcRes.status);
+    const ohlc = await ohlcRes.json();
+    let trades = [];
+    if (resultRes.ok) {
+      const result = await resultRes.json();
+      trades = result.trades || [];
+    }
+    if (!ohlc.candles || !ohlc.candles.length) {
+      showError('Нет свечей в ' + ohlcUrl());
+      return;
+    }
+    chartInstance = LightweightCharts.createChart(wrap, {
+      layout: { background: { color: '#1a2332' }, textColor: '#e7ecf3' },
+      grid: { vertLines: { color: '#2a3544' }, horzLines: { color: '#2a3544' } },
+      rightPriceScale: { borderColor: '#2a3544' },
+      timeScale: { borderColor: '#2a3544', timeVisible: true, secondsVisible: false },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    });
+    const series = chartInstance.addCandlestickSeries({
+      upColor: '#3dd68c', downColor: '#f87171', borderVisible: false,
+      wickUpColor: '#3dd68c', wickDownColor: '#f87171',
+    });
+    series.setData(ohlc.candles.map(c => ({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c })));
+    const mk = tradeMarkers(trades);
+    if (mk.length) series.setMarkers(mk);
+    chartInstance.timeScale().fitContent();
+    const resize = () => {
+      if (chartInstance) {
+        chartInstance.applyOptions({ width: wrap.clientWidth, height: wrap.clientHeight });
+      }
+    };
+    new ResizeObserver(resize).observe(wrap);
+    resize();
+  } catch (e) {
+    showError('Не удалось загрузить данные (' + e.message + '). Откройте через HTTP-сервер из корня проекта.');
+  }
+}
+document.getElementById('fsBtn').addEventListener('click', () => {
+  const el = document.documentElement;
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (el.requestFullscreen) el.requestFullscreen();
+});
+document.getElementById('closeBtn').addEventListener('click', () => window.close());
+init();
+</script>
+</body>
+</html>

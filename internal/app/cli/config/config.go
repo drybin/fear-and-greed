@@ -4,18 +4,13 @@ import (
     "errors"
     "time"
     
-    "github.com/drybin/fead-and-greed/pkg/env"
-    "github.com/drybin/fead-and-greed/pkg/wrap"
-    validation "github.com/go-ozzo/ozzo-validation/v4"
+    "github.com/drybin/fear-and-greed/pkg/env"
 )
 
 type Config struct {
-    ServiceName          string
-    MinterApiUrl         string
-    MinterApiGateUrl     string
-    MinterApiExplorerUrl string
-    PassPhrase           string
-    TgConfig             TgConfig
+    ServiceName string
+    PassPhrase  string
+    TgConfig    TgConfig
 }
 
 type TgConfig struct {

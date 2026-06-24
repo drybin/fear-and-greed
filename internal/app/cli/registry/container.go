@@ -1,14 +1,10 @@
 package registry
 
 import (
-    "github.com/MinterTeam/minter-go-sdk/v2/api/http_client"
-    "github.com/drybin/fead-and-greed/internal/adapter/webapi"
-    "github.com/drybin/fead-and-greed/internal/app/cli/config"
-    "github.com/drybin/fead-and-greed/internal/app/cli/usecase"
-    "github.com/drybin/fead-and-greed/pkg/logger"
-    "github.com/drybin/fead-and-greed/pkg/telegram"
-    "github.com/drybin/fead-and-greed/pkg/wrap"
-    "github.com/go-resty/resty/v2"
+	"github.com/drybin/fear-and-greed/internal/app/cli/config"
+	"github.com/drybin/fear-and-greed/internal/app/cli/usecase"
+	"github.com/drybin/fear-and-greed/internal/infrastructure/binance"
+	"github.com/drybin/fear-and-greed/pkg/logger"
 )
 
 type Container struct {
@@ -18,21 +14,26 @@ type Container struct {
 }
 
 type Usecases struct {
-    HelloWorld *usecase.HelloWorld
+	HelloWorld   *usecase.HelloWorld
+	FearResearch *usecase.FearResearch
+	FetchData    *usecase.FetchData
+	ScanMarkets  *usecase.ScanMarkets
 }
 
 func NewContainer(
     config *config.Config,
 ) (*Container, error) {
     
-    container := Container{
-        Logger: log,
-        Usecases: &Usecases{
-            HelloWorld: usecase.NewHelloWorldUsecase(),
-        },
-        Clean: func() {
-        },
-    }
+	binanceClient := binance.NewClient()
+	container := Container{
+		Usecases: &Usecases{
+			HelloWorld:   usecase.NewHelloWorldUsecase(),
+			FearResearch: usecase.NewFearResearchUsecase(),
+			FetchData:    usecase.NewFetchDataUsecase(binanceClient),
+			ScanMarkets:  usecase.NewScanMarketsUsecase(),
+		},
+		Clean: func() {},
+	}
     
     return &container, nil
 }
