@@ -61,7 +61,7 @@ func (u *FetchData) Process(ctx context.Context, opts FetchDataOptions) error {
 	if err != nil {
 		return err
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	estimated := binance.EstimatedCandles(opts.Since, opts.Until, opts.Interval)
 	var bar *progress.Bar

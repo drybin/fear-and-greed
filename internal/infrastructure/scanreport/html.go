@@ -70,7 +70,7 @@ func GenerateHTML(reportRoot, htmlPath string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	tpl, err := template.New("report").Parse(reportHTMLTemplate)
 	if err != nil {
@@ -87,7 +87,7 @@ func GenerateHTML(reportRoot, htmlPath string) error {
 	if err != nil {
 		return err
 	}
-	defer cf.Close()
+	defer func() { _ = cf.Close() }()
 	ctpl, err := template.New("chart").Parse(chartHTMLTemplate)
 	if err != nil {
 		return err

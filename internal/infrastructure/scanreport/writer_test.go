@@ -8,6 +8,43 @@ import (
 	"github.com/drybin/fear-and-greed/internal/infrastructure/scanreport"
 )
 
+func TestClearAlgoSymbol_preservesOtherSymbols(t *testing.T) {
+	dir := t.TempDir()
+	w, err := scanreport.NewWriter(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	algoDir := filepath.Join(dir, scanreport.DataSubdir, "rise")
+	if err := os.MkdirAll(algoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite := func(name string) {
+		if err := os.WriteFile(filepath.Join(algoDir, name), []byte(`{}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite("BTCUSDT__full.json")
+	mustWrite("BTCUSDT__full__ohlc_240m.json")
+	mustWrite("ETHUSDT__full.json")
+	mustWrite("ETHUSDT__full__ohlc_240m.json")
+
+	if err := w.ClearAlgoSymbol("rise", "BTCUSDT"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(algoDir, "BTCUSDT__full.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected BTC result removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(algoDir, "BTCUSDT__full__ohlc_240m.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected BTC OHLC removed, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(algoDir, "ETHUSDT__full.json")); err != nil {
+		t.Fatalf("ETH result should remain: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(algoDir, "ETHUSDT__full__ohlc_240m.json")); err != nil {
+		t.Fatalf("ETH OHLC should remain: %v", err)
+	}
+}
+
 func TestWriterSaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
 	w, err := scanreport.NewWriter(dir)

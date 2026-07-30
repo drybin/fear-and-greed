@@ -19,7 +19,7 @@ func LoadKlines(path string) ([]model.Candle, error) {
 	if err != nil {
 		return nil, wrap.Errorf("open csv: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	r := csv.NewReader(f)
 	records, err := r.ReadAll()

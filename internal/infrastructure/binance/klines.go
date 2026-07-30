@@ -232,7 +232,7 @@ func (c *Client) fetchBatch(
 	if err != nil {
 		return nil, wrap.Errorf("binance klines request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

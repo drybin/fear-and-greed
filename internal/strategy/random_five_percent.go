@@ -294,13 +294,6 @@ func (r *SimulationReport) fillStats() {
 	r.WaitHoursAvg = sum / float64(len(r.Trades))
 }
 
-func firstDay(candles []model.Candle) (time.Time, bool) {
-	if len(candles) == 0 {
-		return time.Time{}, false
-	}
-	return truncateDay(candles[0].OpenTime), true
-}
-
 func nextDayWithData(candles []model.Candle, sellTime time.Time) (time.Time, bool) {
 	sellDay := truncateDay(sellTime)
 	lastDay := truncateDay(candles[len(candles)-1].OpenTime)

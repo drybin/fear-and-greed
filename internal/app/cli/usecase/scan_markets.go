@@ -256,7 +256,13 @@ func (u *ScanMarkets) Process(_ context.Context, opts ScanMarketsOptions) error 
 		}
 		reportWriter = w
 		for _, a := range algos {
-			if err := w.ClearAlgo(string(a)); err != nil {
+			var err error
+			if opts.Symbol != "" {
+				err = w.ClearAlgoSymbol(string(a), opts.Symbol)
+			} else {
+				err = w.ClearAlgo(string(a))
+			}
+			if err != nil {
 				return fmt.Errorf("clear report algo %s: %w", a, err)
 			}
 		}
@@ -553,7 +559,7 @@ func seedFor(symbol, period, algo string, targetPct int, base int64) int64 {
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write([]byte(algo))
 	_, _ = h.Write([]byte{0})
-	_, _ = h.Write([]byte(fmt.Sprintf("%d", targetPct)))
+	_, _ = fmt.Fprintf(h, "%d", targetPct)
 	return int64(h.Sum64()) ^ base
 }
 

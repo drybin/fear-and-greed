@@ -43,17 +43,6 @@ type smaPerRow struct {
 	report     strategy.SimulationReport
 }
 
-func bestSMAPerRow(rows []smaPerRow) *smaPerRow {
-	var best *smaPerRow
-	for i := range rows {
-		r := &rows[i]
-		if best == nil || r.report.ProfitPct > best.report.ProfitPct {
-			best = r
-		}
-	}
-	return best
-}
-
 func printSMAPerRowsTable(rows []smaPerRow) {
 	fmt.Printf("    %6s  %7s  %10s  %10s  %8s\n", "SMA", "target", "profit %", "profit $", "trades")
 	for _, row := range rows {

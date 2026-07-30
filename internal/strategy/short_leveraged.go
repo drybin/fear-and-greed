@@ -1,7 +1,6 @@
 package strategy
 
 import (
-	"math"
 	"math/rand"
 
 	"github.com/drybin/fear-and-greed/internal/domain/model"
@@ -154,7 +153,6 @@ func SimulateRandomShortLeveraged(candles []model.Candle, seed int64, p ShortLev
 		if last >= liqPrice {
 			cash -= margin
 			rep.LiquidationCount++
-			inPosition = false
 			rep.OpenPosition = false
 			if cash <= 0 {
 				cash = 0
@@ -177,8 +175,4 @@ func SimulateRandomShortLeveraged(candles []model.Candle, seed int64, p ShortLev
 func EquityPct(cash, margin float64, lev int, entry, mark float64) float64 {
 	equity := cash + shortPnLUSD(margin, float64(lev), entry, mark)
 	return (equity/StartCash - 1) * 100
-}
-
-func roundMoney(v float64) float64 {
-	return math.Round(v*100) / 100
 }

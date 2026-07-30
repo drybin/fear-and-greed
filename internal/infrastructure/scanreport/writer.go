@@ -62,6 +62,33 @@ func (w *Writer) ClearAlgo(algo string) error {
 	return os.MkdirAll(dir, 0o755)
 }
 
+// ClearAlgoSymbol removes result + OHLC JSON for one symbol under an algo dir.
+// Other symbols' artifacts are preserved (needed for per-coin VPS batch).
+func (w *Writer) ClearAlgoSymbol(algo, symbol string) error {
+	dir := filepath.Join(w.root, DataSubdir, algo)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	prefix := sanitizeFilePart(symbol) + "__"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
 // Save writes one result JSON and updates in-memory manifest.
 func (w *Writer) Save(r Result) error {
 	if r.UpdatedAt == "" {

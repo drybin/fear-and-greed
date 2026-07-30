@@ -115,10 +115,6 @@ func (u *FearResearch) Process(_ context.Context) error {
 
 	maxResult = 0.0
 	bestPercent := 0
-	result = 100.0
-	inPosition = false
-	buyValue = 0.0
-	lastByuPrice = 0.0
 
 	for percent := 1; percent < 100; percent++ {
 		result := 100.0
@@ -159,10 +155,6 @@ func (u *FearResearch) Process(_ context.Context) error {
 	maxResult = 0.0
 	bestPercent = 0
 	bestBuyPercent := 0
-	result = 100.0
-	inPosition = false
-	buyValue = 0.0
-	lastByuPrice = 0.0
 
 	for buyPercent := 1; buyPercent < 30; buyPercent++ {
 		for percent := 1; percent < 50; percent++ {
@@ -221,7 +213,7 @@ func getCvsData() ([]model.DayInfo, error) {
 	}
 
 	// remember to close the file at the end of the program
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// read csv values using csv.Reader
 	csvReader := csv.NewReader(f)

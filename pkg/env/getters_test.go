@@ -132,7 +132,7 @@ func Test_getEnvDuration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, GetDuration(tt.args.name, tt.args.defaultVal))
 		})
-		os.Unsetenv(tt.envArgs.name)
+		_ = os.Unsetenv(tt.envArgs.name)
 	}
 }
 
@@ -196,7 +196,7 @@ func Test_getEnvInt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, GetInt(tt.args.name, tt.args.defaultVal))
 		})
-		os.Unsetenv(tt.envArgs.name)
+		_ = os.Unsetenv(tt.envArgs.name)
 	}
 }
 
@@ -260,6 +260,6 @@ func Test_getEnvString(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, GetString(tt.args.name, tt.args.defaultVal))
 		})
-		os.Unsetenv(tt.envArgs.name)
+		_ = os.Unsetenv(tt.envArgs.name)
 	}
 }
