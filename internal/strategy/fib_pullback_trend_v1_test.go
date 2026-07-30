@@ -21,7 +21,8 @@ func TestBullishFVG_touchZone(t *testing.T) {
 	if !touch(105, 106) {
 		t.Fatal("expected touch in fib zone")
 	}
-	if touch(104, 104.5) {
+	// zone top=105, bottom≈103.82 — high entirely below bottom → no touch
+	if touch(102, 103) {
 		t.Fatal("expected no touch when high below zone bottom")
 	}
 }

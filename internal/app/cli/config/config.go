@@ -20,17 +20,14 @@ type TgConfig struct {
 }
 
 func (c Config) Validate() error {
-    var errs []error
-    
-    //err := validation.ValidateStruct(&c,
-    //    validation.Field(&c.ServiceName, validation.Required),
-    //    validation.Field(&c.PassPhrase, validation.Required),
-    //)
-    //if err != nil {
-    //    return wrap.Errorf("failed to validate cli config: %w", err)
-    //}
-    
-    return errors.Join(errs...)
+	var errs []error
+	if c.ServiceName == "" {
+		errs = append(errs, errors.New("ServiceName is required"))
+	}
+	if c.PassPhrase == "" {
+		errs = append(errs, errors.New("PassPhrase is required"))
+	}
+	return errors.Join(errs...)
 }
 
 func InitConfig() (*Config, error) {
