@@ -24,23 +24,22 @@ func (c Config) Validate() error {
 	if c.ServiceName == "" {
 		errs = append(errs, errors.New("ServiceName is required"))
 	}
-	if c.PassPhrase == "" {
-		errs = append(errs, errors.New("PassPhrase is required"))
-	}
+	// PassPhrase is unused by current CLI commands; keep field for compatibility only.
 	return errors.Join(errs...)
 }
 
 func InitConfig() (*Config, error) {
-    config := Config{
-        ServiceName: env.GetString("APP_NAME", "fead-and-greed"),
-        TgConfig:    initTgConfig(),
-    }
-    
-    if err := config.Validate(); err != nil {
-        return nil, err
-    }
-    
-    return &config, nil
+	config := Config{
+		ServiceName: env.GetString("APP_NAME", "fead-and-greed"),
+		PassPhrase:  env.GetString("PASS_PHRASE", ""),
+		TgConfig:    initTgConfig(),
+	}
+
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+
+	return &config, nil
 }
 
 func initTgConfig() TgConfig {

@@ -32,11 +32,11 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "PassPhrase is empty, error",
+			name: "PassPhrase is empty, ok",
 			fields: fields{
 				ServiceName: "name",
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
