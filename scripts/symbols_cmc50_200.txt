@@ -1,0 +1,223 @@
+# Binance spot USDT pairs — CMC market-cap ranks ~#50–200 (snapshot 2026-08-03).
+# Excludes: already in symbols_top50.txt, stables/pegged, wrapped, CEX-gold tokens,
+# and coins without a TRADING Binance spot *USDT pair.
+# Active universe: 73 symbols.
+
+# CMC #54 — Morpho
+MORPHOUSDT
+
+# CMC #57 — JUST
+JSTUSDT
+
+# CMC #58 — Ethena
+ENAUSDT
+
+# CMC #59 — Pump.fun
+PUMPUSDT
+
+# CMC #64 — Quant
+QNTUSDT
+
+# CMC #68 — Jupiter
+JUPUSDT
+
+# CMC #74 — PancakeSwap
+CAKEUSDT
+
+# CMC #83 — Dash
+DASHUSDT
+
+# CMC #84 — ether.fi
+ETHFIUSDT
+
+# CMC #85 — Aerodrome Finance
+AEROUSDT
+
+# CMC #86 — Pudgy Penguins
+PENGUUSDT
+
+# CMC #87 — Virtuals Protocol
+VIRTUALUSDT
+
+# CMC #88 — OFFICIAL TRUMP
+TRUMPUSDT
+
+# CMC #90 — Sun [New]
+SUNUSDT
+
+# CMC #91 — Midnight
+NIGHTUSDT
+
+# CMC #93 — Pyth Network
+PYTHUSDT
+
+# CMC #98 — Terra Classic
+LUNCUSDT
+
+# CMC #99 — Gnosis
+GNOUSDT
+
+# CMC #102 — LayerZero
+ZROUSDT
+
+# CMC #105 — Bonk
+BONKUSDT
+
+# CMC #106 — Jito
+JTOUSDT
+
+# CMC #109 — Decred
+DCRUSDT
+
+# CMC #110 — Pendle
+PENDLEUSDT
+
+# CMC #111 — KAITO
+KAITOUSDT
+
+# CMC #113 — Tezos
+XTZUSDT
+
+# CMC #114 — Conflux
+CFXUSDT
+
+# CMC #116 — JasmyCoin
+JASMYUSDT
+
+# CMC #117 — Plasma
+XPLUSDT
+
+# CMC #119 — FLOKI
+FLOKIUSDT
+
+# CMC #120 — Falcon Finance
+FFUSDT
+
+# CMC #121 — DeXe
+DEXEUSDT
+
+# CMC #122 — DoubleZero
+2ZUSDT
+
+# CMC #124 — Maple Finance
+SYRUPUSDT
+
+# CMC #127 — Starknet
+STRKUSDT
+
+# CMC #128 — Kaia
+KAIAUSDT
+
+# CMC #129 — Kite
+KITEUSDT
+
+# CMC #130 — Compound
+COMPUSDT
+
+# CMC #131 — Raydium
+RAYUSDT
+
+# CMC #133 — EigenCloud
+EIGENUSDT
+
+# CMC #134 — Trust Wallet Token
+TWTUSDT
+
+# CMC #137 — IOTA
+IOTAUSDT
+
+# CMC #144 — dogwifhat
+WIFUSDT
+
+# CMC #146 — eCash
+XECUSDT
+
+# CMC #147 — Chiliz
+CHZUSDT
+
+# CMC #150 — ApeCoin
+APEUSDT
+
+# CMC #151 — Neo
+NEOUSDT
+
+# CMC #152 — Convex Finance
+CVXUSDT
+
+# CMC #154 — Theta Network
+THETAUSDT
+
+# CMC #160 — Arweave
+ARUSDT
+
+# CMC #161 — 1inch
+1INCHUSDT
+
+# CMC #162 — AWE
+AWEUSDT
+
+# CMC #163 — Genius Terminal
+GENIUSUSDT
+
+# CMC #164 — SafePal
+SFPUSDT
+
+# CMC #165 — Zama
+ZAMAUSDT
+
+# CMC #166 — Vaulta
+AUSDT
+
+# CMC #167 — Centrifuge
+CFGUSDT
+
+# CMC #168 — Sentient
+SENTUSDT
+
+# CMC #169 — Basic Attention Token
+BATUSDT
+
+# CMC #172 — dYdX
+DYDXUSDT
+
+# CMC #173 — Kamino
+KMNOUSDT
+
+# CMC #175 — Golem
+GLMUSDT
+
+# CMC #179 — Gala
+GALAUSDT
+
+# CMC #181 — Rootstock Infrastructure Framework
+RIFUSDT
+
+# CMC #182 — Meteora
+METUSDT
+
+# CMC #184 — MultiversX
+EGLDUSDT
+
+# CMC #185 — ZKsync
+ZKUSDT
+
+# CMC #186 — Reserve Rights
+RSRUSDT
+
+# CMC #187 — Four
+FORMUSDT
+
+# CMC #190 — Yearn
+YFIUSDT
+
+# CMC #194 — Horizen
+ZENUSDT
+
+# CMC #197 — ORDI
+ORDIUSDT
+
+# CMC #199 — Synthetix
+SNXUSDT
+
+# CMC #200 — Banana For Scale
+BANANAS31USDT
