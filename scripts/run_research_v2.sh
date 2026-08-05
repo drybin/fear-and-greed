@@ -18,9 +18,11 @@ SYMBOLS_FILE="${SYMBOLS_FILE:-$ROOT/scripts/symbols_top50.txt}"
 AUTHORIZE_HOLDOUT="${AUTHORIZE_HOLDOUT:-0}"
 SKIP_FETCH="${SKIP_FETCH:-0}"
 
-if [[ -n "$(git status --porcelain)" ]]; then
+TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"
+UNTRACKED_SOURCE="$(git ls-files --others --exclude-standard -- '*.go' 'go.mod' 'go.sum')"
+if [[ -n "$TRACKED_STATUS" || -n "$UNTRACKED_SOURCE" ]]; then
   echo "ERROR: protocol-v2 requires a clean Git worktree." >&2
-  echo "Commit the exact implementation and keep generated data under data/." >&2
+  echo "Commit tracked changes and any untracked Go source before running." >&2
   exit 1
 fi
 

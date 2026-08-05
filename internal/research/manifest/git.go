@@ -9,19 +9,24 @@ import (
 	"strings"
 )
 
-// GitRevision reads HEAD and whether the working tree has tracked or untracked
-// changes. The caller may instead populate SourceRevision directly in tests or
-// non-git environments.
+// GitRevision reads HEAD and whether tracked files or untracked Go source can
+// change the built evaluator. Untracked datasets and local reports are inputs
+// fingerprinted elsewhere and do not make the source revision dirty.
 func GitRevision(dir string) (SourceRevision, error) {
 	rev, err := gitOutput(dir, "rev-parse", "HEAD")
 	if err != nil {
 		return SourceRevision{}, err
 	}
-	status, err := gitOutput(dir, "status", "--porcelain")
+	status, err := gitOutput(dir, "status", "--porcelain", "--untracked-files=no")
 	if err != nil {
 		return SourceRevision{}, err
 	}
-	return SourceRevision{GitRevision: strings.TrimSpace(rev), Dirty: strings.TrimSpace(status) != ""}, nil
+	untrackedSource, err := gitOutput(dir, "ls-files", "--others", "--exclude-standard", "--", "*.go", "go.mod", "go.sum")
+	if err != nil {
+		return SourceRevision{}, err
+	}
+	dirty := strings.TrimSpace(status) != "" || strings.TrimSpace(untrackedSource) != ""
+	return SourceRevision{GitRevision: strings.TrimSpace(rev), Dirty: dirty}, nil
 }
 
 func gitOutput(dir string, args ...string) (string, error) {
