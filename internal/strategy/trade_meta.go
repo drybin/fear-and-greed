@@ -24,6 +24,21 @@ type TradeEvent struct {
 	Fraction float64 // share of position closed at this price
 }
 
+// EntrySignal records a close-confirmed legacy entry decision independently of
+// its later exit. It lets protocol adapters reuse legacy detection logic
+// without deriving entries from completed trades, which omit open positions.
+//
+// Time is the opening timestamp of the bar whose close confirmed the setup;
+// the protocol-v2 adapter maps it to next-bar execution.
+type EntrySignal struct {
+	Time        time.Time
+	EntryPrice  float64
+	Stop        float64
+	TP1         float64
+	TP2         float64
+	Diagnostics map[string]float64
+}
+
 // TradeRoundTripPnLPct returns (exit/entry - 1) * 100 for a simple single exit.
 func TradeRoundTripPnLPct(t Trade) float64 {
 	if t.BuyPrice <= 0 {

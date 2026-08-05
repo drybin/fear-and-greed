@@ -19,22 +19,23 @@ func Run(config *config.Config) error {
 	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Println(err)
 	}
-    
-    cnt, err := registry.NewContainer(config)
-    if err != nil {
-        log.Fatal("failed to create cli container", err)
-    }
-    
-    app := cliV2.NewApp()
-    app.Name = config.ServiceName
-    app.Usage = cliAppDesc
+
+	cnt, err := registry.NewContainer(config)
+	if err != nil {
+		log.Fatal("failed to create cli container", err)
+	}
+
+	app := cliV2.NewApp()
+	app.Name = config.ServiceName
+	app.Usage = cliAppDesc
 	app.Commands = []*cliV2.Command{
 		command.NewHelloWorldCommand(cnt.Usecases.HelloWorld),
 		command.NewFearResearchCommand(cnt.Usecases.FearResearch),
 		command.NewFetchDataCommand(cnt.Usecases.FetchData),
 		command.NewScanMarketsCommand(cnt.Usecases.ScanMarkets),
 		command.NewReportHTMLCommand(),
+		command.NewResearchValidateCommand(),
 	}
-    
-    return app.Run(os.Args)
+
+	return app.Run(os.Args)
 }

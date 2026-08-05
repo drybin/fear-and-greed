@@ -333,6 +333,10 @@ func SimulateFibPullbackTrendV1WithParams(candles []model.Candle, p FibPullbackT
 				"pivot_length": float64(p.PivotLength),
 				"zone_label":   zoneLabelCode(p.Zone),
 			}
+			rep.Signals = append(rep.Signals, EntrySignal{
+				Time: c.OpenTime, EntryPrice: entry, Stop: stop,
+				TP1: setup.tp1Level, TP2: setup.tp2Level, Diagnostics: CloneContext(setup.entryContext),
+			})
 			setup.coins = cash / entry
 			cash = 0
 			state = fptInPosition

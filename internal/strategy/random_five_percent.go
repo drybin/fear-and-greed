@@ -30,6 +30,7 @@ type Trade struct {
 type SimulationReport struct {
 	TargetPct      float64
 	Trades         []Trade
+	Signals        []EntrySignal // close-confirmed entries, including still-open positions
 	CompletedCount int
 	OpenPosition   bool // true if a position was still open at end of data (may coexist with completed trades)
 	FinalCash      float64 // mark-to-market at end (includes open leg)

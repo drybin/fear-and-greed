@@ -233,6 +233,10 @@ func SimulateNR7TrendBreakoutV1WithParams(candles []model.Candle, p NR7TrendBrea
 			"trend_filter":    float64(p.TrendFilter),
 			"breakout_range":  barRange,
 		}
+		rep.Signals = append(rep.Signals, EntrySignal{
+			Time: c.OpenTime, EntryPrice: entry, Stop: stop,
+			TP1: setup.tp1Level, TP2: setup.tp2Level, Diagnostics: CloneContext(setup.entryContext),
+		})
 		setup.coins = cash / entry
 		cash = 0
 		state = nr7tbInPosition

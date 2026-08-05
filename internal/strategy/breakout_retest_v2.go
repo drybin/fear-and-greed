@@ -238,6 +238,10 @@ func SimulateBreakoutRetestLongV2(candles []model.Candle) SimulationReport {
 				"tp2":        setup.entryPrice + 2*risk,
 				"risk_pct":   risk / setup.entryPrice * 100,
 			}
+			rep.Signals = append(rep.Signals, EntrySignal{
+				Time: c.OpenTime, EntryPrice: entryOpen, Stop: setup.stopLevel,
+				TP1: setup.tp1Level, TP2: setup.tp2Level, Diagnostics: CloneContext(setup.entryContext),
+			})
 			setup.coins = cash / entryOpen
 			cash = 0
 			state = brv2InPosition
