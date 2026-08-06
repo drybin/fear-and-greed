@@ -28,12 +28,18 @@ fi
 
 REVISION="$(git rev-parse --short=12 HEAD)"
 RUN_DIR="${RUN_DIR:-$DATA_DIR/runs/${CUTOFF}-${REVISION}}"
-BIN="${BIN:-$DATA_DIR/bin/fear-and-greed}"
+BIN="${BIN:-$ROOT/bin/cli}"
 MANIFEST="${MANIFEST:-$RUN_DIR/manifest.json}"
 OUTPUT="${OUTPUT:-$RUN_DIR/output}"
 LOG_FILE="$RUN_DIR/workflow.log"
 
-mkdir -p "$(dirname "$BIN")" "$RUN_DIR"
+mkdir -p "$RUN_DIR"
+
+if [[ ! -x "$BIN" ]]; then
+  echo "ERROR: executable CLI not found: $BIN" >&2
+  echo "Build it first or pass BIN=/absolute/path/to/fear-and-greed." >&2
+  exit 1
+fi
 
 run_logged() {
   printf '\n[%s] RUN:' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a "$LOG_FILE"
@@ -47,10 +53,8 @@ echo "Run directory: $RUN_DIR"
 
 if [[ "$SKIP_FETCH" != "1" ]]; then
   BIN="$BIN" DATA_DIR="$DATA_DIR" SYMBOLS_FILE="$SYMBOLS_FILE" \
-    SINCE="$SINCE" UNTIL="$UNTIL" INTERVAL=1m MARKET=spot BUILD=1 \
+    SINCE="$SINCE" UNTIL="$UNTIL" INTERVAL=1m MARKET=spot \
     "$ROOT/scripts/fetch_research_v2_top50.sh"
-else
-  run_logged go build -o "$BIN" ./cmd/cli/...
 fi
 
 run_logged "$BIN" research-validate verify --workdir "$ROOT"

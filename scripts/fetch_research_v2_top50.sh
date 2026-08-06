@@ -12,7 +12,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
-BIN="${BIN:-$ROOT/bin/fear-and-greed}"
+BIN="${BIN:-$ROOT/bin/cli}"
 DATA_DIR="${DATA_DIR:-$ROOT/data/research-v2}"
 SYMBOLS_FILE="${SYMBOLS_FILE:-$ROOT/scripts/symbols_top50.txt}"
 SINCE="${SINCE:-2024-07-01}"
@@ -20,7 +20,6 @@ UNTIL="${UNTIL:-2026-07-31}"
 INTERVAL="${INTERVAL:-1m}"
 MARKET="${MARKET:-spot}"
 FORCE="${FORCE:-0}"
-BUILD="${BUILD:-1}"
 EXPECTED_SYMBOLS="${EXPECTED_SYMBOLS:-50}"
 export GOMAXPROCS="${GOMAXPROCS:-2}"
 
@@ -29,7 +28,7 @@ LOG_FILE="$STATE_DIR/fetch.log"
 FAILED_FILE="$STATE_DIR/failed.txt"
 CONFIG_FILE="$STATE_DIR/config.txt"
 
-mkdir -p "$(dirname "$BIN")" "$DATA_DIR" "$STATE_DIR"
+mkdir -p "$DATA_DIR" "$STATE_DIR"
 : >"$FAILED_FILE"
 
 log() {
@@ -47,12 +46,10 @@ if [[ "$MARKET" != "spot" ]]; then
   exit 1
 fi
 
-if [[ "$BUILD" == "1" || ! -x "$BIN" ]]; then
-  log "Building CLI: $BIN"
-  if ! go build -o "$BIN" ./cmd/cli/... >>"$LOG_FILE" 2>&1; then
-    log "ERROR: CLI build failed; see $LOG_FILE"
-    exit 1
-  fi
+if [[ ! -x "$BIN" ]]; then
+	log "ERROR: executable CLI not found: $BIN"
+	log "Build it first or pass BIN=/absolute/path/to/fear-and-greed."
+	exit 1
 fi
 
 TOTAL="$(grep -vE '^[[:space:]]*(#|$)' "$SYMBOLS_FILE" | wc -l | tr -d ' ')"
