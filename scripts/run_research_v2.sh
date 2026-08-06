@@ -17,6 +17,8 @@ DATA_DIR="${DATA_DIR:-$ROOT/data/research-v2}"
 SYMBOLS_FILE="${SYMBOLS_FILE:-$ROOT/scripts/symbols_top50.txt}"
 AUTHORIZE_HOLDOUT="${AUTHORIZE_HOLDOUT:-0}"
 SKIP_FETCH="${SKIP_FETCH:-0}"
+SKIP_VERIFY="${SKIP_VERIFY:-0}"
+VERIFY_DOCKER_IMAGE="${VERIFY_DOCKER_IMAGE:-golang:1.22}"
 
 TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"
 UNTRACKED_SOURCE="$(git ls-files --others --exclude-standard -- '*.go' 'go.mod' 'go.sum')"
@@ -57,7 +59,21 @@ if [[ "$SKIP_FETCH" != "1" ]]; then
     "$ROOT/scripts/fetch_research_v2_top50.sh"
 fi
 
-run_logged "$BIN" research-validate verify --workdir "$ROOT"
+if [[ "$SKIP_VERIFY" == "1" ]]; then
+  echo "Verification skipped explicitly with SKIP_VERIFY=1."
+elif command -v go >/dev/null 2>&1; then
+  run_logged "$BIN" research-validate verify --workdir "$ROOT"
+elif command -v docker >/dev/null 2>&1; then
+  run_logged docker run --rm \
+    -v "$ROOT:/app" \
+    -w /app \
+    "$VERIFY_DOCKER_IMAGE" \
+    go test ./internal/research/... ./internal/strategy/...
+else
+  echo "ERROR: verification requires Go or Docker." >&2
+  echo "If the exact commit was already tested during your manual build, rerun with SKIP_VERIFY=1." >&2
+  exit 1
+fi
 
 run_logged "$BIN" research-validate prepare \
   --symbols "$SYMBOLS_FILE" \
