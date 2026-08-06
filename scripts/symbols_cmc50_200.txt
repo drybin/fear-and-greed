@@ -1,10 +1,7 @@
 # Binance spot USDT pairs — CMC market-cap ranks ~#50–200 (snapshot 2026-08-03).
 # Excludes: already in symbols_top50.txt, stables/pegged, wrapped, CEX-gold tokens,
 # and coins without a TRADING Binance spot *USDT pair.
-# Active universe: 73 symbols.
-
-# CMC #54 — Morpho
-MORPHOUSDT
+# Active universe: 72 symbols.
 
 # CMC #57 — JUST
 JSTUSDT
