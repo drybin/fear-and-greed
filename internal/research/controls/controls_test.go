@@ -39,6 +39,11 @@ func TestBTCBuyAndHoldUsesExplicitBTCInput(t *testing.T) {
 	require.Equal(t, btc.Symbol, result.Entries[0].Symbol)
 }
 
+func TestCausalProtectiveStopRemainsPositiveForLowPricedAssets(t *testing.T) {
+	require.Equal(t, 0.00000001, causalProtectiveStop(0.00001))
+	require.Equal(t, 0.0001, causalProtectiveStop(100))
+}
+
 func TestEMA200GeneratesCausalLongCashSignals(t *testing.T) {
 	input := fixtureInput(205)
 	for i := range input.Candles {

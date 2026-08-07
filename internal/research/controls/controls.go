@@ -5,6 +5,7 @@ package controls
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"time"
@@ -243,7 +244,10 @@ func holdEntry(control protocolv2.StrategyRef, input Input, id string) (executio
 // any candle after the signal. The notional cap, rather than this distant stop,
 // controls passive benchmark allocation.
 func causalProtectiveStop(reference float64) float64 {
-	return protocolv2.RoundPrice(reference * 0.000001)
+	// The common fill contract requires a positive price-rounded stop. For
+	// low-priced assets such as SHIB, the distant proportional stop would round
+	// to zero at protocol precision.
+	return math.Max(0.00000001, protocolv2.RoundPrice(reference*0.000001))
 }
 
 func (in Input) scoreStart() time.Time {
