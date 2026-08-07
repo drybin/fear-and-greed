@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -137,6 +138,7 @@ func Development(ctx context.Context, options DevelopmentOptions) (DevelopmentRe
 				report.Units = append(report.Units, checkpoint)
 				completed++
 				notify(options.Progress, Progress{Completed: completed, Remaining: total - completed, Reused: reused, Unit: unit})
+				releaseResearchMemory()
 				evidence, err := candidateEvidence(candidate.ID, symbols, artifact, options.Manifest.Risk.InitialEquity)
 				if err != nil {
 					return report, err
@@ -162,6 +164,7 @@ func Development(ctx context.Context, options DevelopmentOptions) (DevelopmentRe
 				report.Units = append(report.Units, checkpoint)
 				completed++
 				notify(options.Progress, Progress{Completed: completed, Remaining: total - completed, Reused: reused, Unit: unit})
+				releaseResearchMemory()
 			}
 
 			for _, control := range []string{string(controls.CashCode), string(controls.BuyAndHoldCode), string(controls.BTCBuyAndHoldCode), string(controls.EMA200Code), string(controls.RandomCode)} {
@@ -173,6 +176,7 @@ func Development(ctx context.Context, options DevelopmentOptions) (DevelopmentRe
 				report.Units = append(report.Units, checkpoint)
 				completed++
 				notify(options.Progress, Progress{Completed: completed, Remaining: total - completed, Reused: reused, Unit: unit})
+				releaseResearchMemory()
 			}
 		}
 	}
@@ -188,6 +192,13 @@ func Development(ctx context.Context, options DevelopmentOptions) (DevelopmentRe
 		return DevelopmentReport{}, err
 	}
 	return report, nil
+}
+
+// releaseResearchMemory bounds the resident set between independently
+// checkpointed units. A full unit can process 50 long minute-candle series;
+// none of that transient data is needed after its artifact is persisted.
+func releaseResearchMemory() {
+	debug.FreeOSMemory()
 }
 
 func preflight(options DevelopmentOptions) error {
