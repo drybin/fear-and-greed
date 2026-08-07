@@ -7,6 +7,8 @@
 #   WBTC BTCB STETH WSTETH WBETH WEETH RETH CBETH
 # Excluded without a Binance Spot USDT pair:
 #   HYPE
+# Renamed on Binance Spot on 2026-07-02:
+#   TONUSDT -> GRAMUSDT
 #
 # Active universe (50): no stables, no wrapped BTC/ETH.
 
@@ -37,7 +39,7 @@ ARBUSDT
 OPUSDT
 INJUSDT
 RENDERUSDT
-TONUSDT
+GRAMUSDT
 PEPEUSDT
 SHIBUSDT
 WLDUSDT
