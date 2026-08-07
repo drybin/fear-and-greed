@@ -430,6 +430,9 @@ func (t TradeState) Validate() error {
 	if t.Entry.PositionID != t.PositionID {
 		return fmt.Errorf("execution: entry position id does not match trade")
 	}
+	// Quantities are protocol-rounded to eight decimal places. Re-round each
+	// accumulation so binary floating-point noise cannot turn a reconciled
+	// partial exit plus final exit into an apparent over-exit.
 	exited := float64(0)
 	for _, fill := range t.PartialExits {
 		if err := fill.Validate(); err != nil {
@@ -438,7 +441,7 @@ func (t TradeState) Validate() error {
 		if fill.PositionID != t.PositionID {
 			return fmt.Errorf("execution: partial exit position id does not match trade")
 		}
-		exited += fill.Quantity
+		exited = protocolv2.RoundQuantity(exited + fill.Quantity)
 	}
 	if t.FinalExit != nil {
 		if err := t.FinalExit.Validate(); err != nil {
@@ -447,7 +450,7 @@ func (t TradeState) Validate() error {
 		if t.FinalExit.PositionID != t.PositionID {
 			return fmt.Errorf("execution: final exit position id does not match trade")
 		}
-		exited += t.FinalExit.Quantity
+		exited = protocolv2.RoundQuantity(exited + t.FinalExit.Quantity)
 	}
 	if exited > t.Entry.Quantity {
 		return fmt.Errorf("execution: exited quantity exceeds entry quantity")

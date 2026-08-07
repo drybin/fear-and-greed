@@ -140,6 +140,27 @@ func TestDomainRecordInvariants(t *testing.T) {
 		require.Error(t, trade.Validate())
 	})
 
+	t.Run("closed trade reconciles rounded partial and final quantities", func(t *testing.T) {
+		entry := execution.EntryFill{
+			FillAudit:  testAudit("entry", 20.07533043, testTime.Add(time.Hour)),
+			PositionID: "position-001",
+		}
+		partial := execution.PartialExitFill{
+			FillAudit:  testAudit("partial", 10.03766522, testTime.Add(90*time.Minute)),
+			PositionID: "position-001", Reason: execution.ExitReasonTarget,
+		}
+		final := execution.FinalExitFill{
+			FillAudit:  testAudit("final", 10.03766521, testTime.Add(2*time.Hour)),
+			PositionID: "position-001", Reason: execution.ExitReasonFoldEnd,
+		}
+		trade := execution.TradeState{
+			TradeID: "trade-001", PositionID: "position-001", Status: execution.TradeClosed,
+			Entry: entry, PartialExits: []execution.PartialExitFill{partial}, FinalExit: &final,
+		}
+
+		require.NoError(t, trade.Validate())
+	})
+
 	t.Run("equity reconciles cash and open value", func(t *testing.T) {
 		snapshot := execution.EquitySnapshot{
 			Time: testTime, Cash: 100, OpenPositionValue: 20, TotalEquity: 121,
