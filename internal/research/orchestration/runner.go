@@ -206,10 +206,10 @@ func (r *InProcessRunner) runCandidate(unit Unit, cfg execution.Config) ([]byte,
 		trades += summary.TradeCount
 		rejects += len(result.Rejections)
 		symbolResults = append(symbolResults, UnitArtifact{
-			Unit: unit, Symbol: symbol, Survivorship: eligibility.SurvivorshipWarning,
-			Metrics: summary, TradeCount: summary.TradeCount, RejectionCount: len(result.Rejections),
+			Unit: unit, Symbol: symbol, Survivorship: eligibility.SurvivorshipWarning, Metrics: compactMetrics(summary, cfg.Interval),
+			TradeCount: summary.TradeCount, RejectionCount: len(result.Rejections),
 			RealizedCash: result.RealizedCash, FinalEquity: lastEquity(result), EngineAuditLen: len(result.Audit),
-			Trades: result.Trades, Equity: result.Equity, Rejections: result.Rejections, Audit: result.Audit,
+			Trades: result.Trades, Equity: compactEquity(result.Equity, cfg.Interval), Rejections: result.Rejections, Audit: result.Audit,
 		})
 	}
 	if len(symbolResults) == 0 {
@@ -281,10 +281,10 @@ func (r *InProcessRunner) runControl(unit Unit, cfg execution.Config) ([]byte, e
 		totalTrades += summary.TradeCount
 		totalRejects += len(result.Engine.Rejections)
 		results = append(results, UnitArtifact{
-			Unit: unit, Symbol: symbol, Survivorship: eligibility.SurvivorshipWarning, Metrics: summary,
+			Unit: unit, Symbol: symbol, Survivorship: eligibility.SurvivorshipWarning, Metrics: compactMetrics(summary, cfg.Interval),
 			TradeCount: summary.TradeCount, RejectionCount: len(result.Engine.Rejections), RealizedCash: result.Engine.RealizedCash,
 			FinalEquity: lastEquity(result.Engine), Control: unit.Control, EngineAuditLen: len(result.Engine.Audit),
-			Trades: result.Engine.Trades, Equity: result.Engine.Equity, Rejections: result.Engine.Rejections, Audit: result.Engine.Audit,
+			Trades: result.Engine.Trades, Equity: compactEquity(result.Engine.Equity, cfg.Interval), Rejections: result.Engine.Rejections, Audit: result.Engine.Audit,
 		})
 	}
 	return json.Marshal(UnitResult{Unit: unit, SurvivorshipWarning: eligibility.SurvivorshipWarning, Symbols: results, AggregateTradeCount: totalTrades, AggregateRejections: totalRejects, SymbolsEvaluated: len(results)})
@@ -385,6 +385,64 @@ func toEngineCandles(in []model.Candle) []execution.Candle {
 	out := make([]execution.Candle, len(in))
 	for i, c := range in {
 		out[i] = execution.Candle{Time: c.OpenTime.UTC(), Open: c.Open, High: c.High, Low: c.Low, Close: c.Close}
+	}
+	return out
+}
+
+// compactMetrics retains exact computed metrics while sampling only the
+// visualization curve stored in checkpoints. Candidate selection and gates use
+// the scalar metrics, so this bounds research memory without changing results.
+func compactMetrics(summary metrics.Summary, interval time.Duration) metrics.Summary {
+	summary.Drawdown = compactDrawdown(summary.Drawdown, interval)
+	return summary
+}
+
+func compactEquity(points []execution.EquitySnapshot, interval time.Duration) []execution.EquitySnapshot {
+	if len(points) < 2 || interval <= time.Minute {
+		return append([]execution.EquitySnapshot(nil), points...)
+	}
+	out := make([]execution.EquitySnapshot, 0, len(points)/int(interval/time.Minute)+2)
+	first := points[0]
+	current := first
+	bucket := first.Time.UTC().Truncate(interval)
+	for _, point := range points[1:] {
+		nextBucket := point.Time.UTC().Truncate(interval)
+		if !nextBucket.Equal(bucket) {
+			out = append(out, current)
+			bucket = nextBucket
+		}
+		current = point
+	}
+	if len(out) == 0 || !out[0].Time.Equal(first.Time) {
+		out = append([]execution.EquitySnapshot{first}, out...)
+	}
+	if !out[len(out)-1].Time.Equal(current.Time) {
+		out = append(out, current)
+	}
+	return out
+}
+
+func compactDrawdown(points []metrics.DrawdownPoint, interval time.Duration) []metrics.DrawdownPoint {
+	if len(points) < 2 || interval <= time.Minute {
+		return append([]metrics.DrawdownPoint(nil), points...)
+	}
+	out := make([]metrics.DrawdownPoint, 0, len(points)/int(interval/time.Minute)+2)
+	first := points[0]
+	current := first
+	bucket := first.Time.UTC().Truncate(interval)
+	for _, point := range points[1:] {
+		nextBucket := point.Time.UTC().Truncate(interval)
+		if !nextBucket.Equal(bucket) {
+			out = append(out, current)
+			bucket = nextBucket
+		}
+		current = point
+	}
+	if len(out) == 0 || !out[0].Time.Equal(first.Time) {
+		out = append([]metrics.DrawdownPoint{first}, out...)
+	}
+	if !out[len(out)-1].Time.Equal(current.Time) {
+		out = append(out, current)
 	}
 	return out
 }
