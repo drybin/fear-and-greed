@@ -187,3 +187,17 @@ func TestEngineSoldNeverExceedsBoughtAndNetReconciles(t *testing.T) {
 	require.InDelta(t, gross-costs, net, 0.00000002)
 	require.False(t, math.IsNaN(net))
 }
+
+func TestEngineFinalExitReconcilesPartialQuantity(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	result := run(t, engineConfig(), []execution.Candle{
+		bar(start, 0.00001, 0.00001, 0.00001, 0.00001),
+		bar(start.Add(time.Hour), 0.00001, 0.000012, 0.0000095, 0.000011),
+		bar(start.Add(2*time.Hour), 0.000011, 0.000012, 0.000008, 0.000009),
+	}, engineSignal("large-quantity", start, 0.000009, execution.Target{Name: "tp1", Price: 0.000011}))
+	require.Len(t, result.Trades, 1)
+	trade := result.Trades[0]
+	require.Len(t, trade.PartialExits, 1)
+	require.NoError(t, trade.Validate())
+	require.Equal(t, trade.Entry.Quantity, protocolv2.RoundQuantity(trade.PartialExits[0].Quantity+trade.FinalExit.Quantity))
+}

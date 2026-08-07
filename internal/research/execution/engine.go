@@ -303,6 +303,12 @@ func (a *account) exit(c Candle, reference, qty float64, reason ExitReason) {
 	if p == nil || qty <= 0 || qty > p.state.RemainingQuantity {
 		return
 	}
+	remaining := protocolv2.RoundQuantity(p.state.RemainingQuantity - qty)
+	if remaining == 0 {
+		// Reconcile the persisted final fill from the entry and prior fills,
+		// rather than from a separately rounded running balance.
+		qty = finalExitQuantity(p)
+	}
 	price := a.sellPrice(reference)
 	notional := protocolv2.RoundFee(price * qty)
 	commission := a.commission(notional)
@@ -312,8 +318,8 @@ func (a *account) exit(c Candle, reference, qty float64, reason ExitReason) {
 	a.realized = protocolv2.RoundFee(a.realized + protocolv2.RoundFee((price-p.state.AverageEntryPrice)*qty) - commission)
 	intent := OrderIntent{IntentID: "intent-" + p.signal.SignalID, SignalID: p.signal.SignalID, Strategy: p.signal.Strategy, Symbol: p.signal.Symbol, Side: SideLong, SourceCandleTime: p.signal.SourceCandleTime, EligibleAt: c.Time, Quantity: qty, Stop: p.state.Stop}
 	fill := a.fillAudit("exit-"+p.signal.SignalID+"-"+fmt.Sprint(len(p.trade.PartialExits)+1), intent, c.Time, reference, price, qty, commission)
-	p.state.RemainingQuantity = protocolv2.RoundQuantity(p.state.RemainingQuantity - qty)
-	if p.state.RemainingQuantity == 0 {
+	p.state.RemainingQuantity = remaining
+	if remaining == 0 {
 		p.state.Status = PositionClosed
 		final := FinalExitFill{PositionID: p.state.PositionID, Reason: reason, FillAudit: fill}
 		p.trade.Status, p.trade.FinalExit = TradeClosed, &final
@@ -324,6 +330,14 @@ func (a *account) exit(c Candle, reference, qty float64, reason ExitReason) {
 	}
 	p.trade.PartialExits = append(p.trade.PartialExits, PartialExitFill{PositionID: p.state.PositionID, Reason: reason, FillAudit: fill})
 	a.audit = append(a.audit, AuditEvent{Time: c.Time, Kind: "partial_exit", SignalID: p.signal.SignalID, Details: map[string]float64{"price": price, "quantity": qty, "commission": commission}})
+}
+
+func finalExitQuantity(p *openPosition) float64 {
+	exited := 0.0
+	for _, fill := range p.trade.PartialExits {
+		exited = protocolv2.RoundQuantity(exited + fill.Quantity)
+	}
+	return protocolv2.RoundQuantity(p.trade.Entry.Quantity - exited)
 }
 
 func (a *account) closeAtFoldEnd(c Candle) {

@@ -452,7 +452,7 @@ func (t TradeState) Validate() error {
 		}
 		exited = protocolv2.RoundQuantity(exited + t.FinalExit.Quantity)
 	}
-	if exited > t.Entry.Quantity {
+	if exited-t.Entry.Quantity > quantityTolerance(exited, t.Entry.Quantity) {
 		return fmt.Errorf("execution: exited quantity exceeds entry quantity")
 	}
 	if t.Status == TradeOpen && t.FinalExit != nil {
@@ -461,7 +461,7 @@ func (t TradeState) Validate() error {
 	if t.Status == TradeClosed && t.FinalExit == nil {
 		return fmt.Errorf("execution: closed trade requires final exit")
 	}
-	if t.Status == TradeClosed && exited != t.Entry.Quantity {
+	if t.Status == TradeClosed && !quantitiesReconcile(exited, t.Entry.Quantity) {
 		return fmt.Errorf("execution: closed trade quantities must reconcile")
 	}
 	return nil
@@ -567,6 +567,22 @@ func validateNonNegativeQuantity(name string, value float64) error {
 		return fmt.Errorf("execution: %s must be finite, non-negative, and quantity-rounded", name)
 	}
 	return nil
+}
+
+func quantitiesReconcile(left, right float64) bool {
+	return math.Abs(left-right) <= quantityTolerance(left, right)
+}
+
+// quantityTolerance accounts for float64 spacing at large token quantities.
+// At SHIB-scale positions a nominal 1e-8 quantity tick is smaller than one
+// representable float64 step, so exact equality would reject reconciled fills.
+func quantityTolerance(left, right float64) float64 {
+	scale := math.Max(math.Abs(left), math.Abs(right))
+	if scale == 0 {
+		return 0
+	}
+	ulp := math.Nextafter(scale, math.Inf(1)) - scale
+	return math.Max(1e-8, 8*ulp)
 }
 
 func validateNonNegativeFee(name string, value float64) error {
