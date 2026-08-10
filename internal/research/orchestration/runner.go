@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/drybin/fear-and-greed/internal/domain/model"
@@ -38,6 +39,14 @@ func (s DirCandleStore) Path(symbol protocolv2.Symbol) string {
 
 func (s DirCandleStore) Load(symbol protocolv2.Symbol) ([]model.Candle, error) {
 	return csvdata.LoadKlines(s.Path(symbol))
+}
+
+func (s DirCandleStore) LoadRange(symbol protocolv2.Symbol, start, end time.Time) ([]model.Candle, error) {
+	return csvdata.LoadKlinesRange(s.Path(symbol), start, end)
+}
+
+type rangeCandleStore interface {
+	LoadRange(protocolv2.Symbol, time.Time, time.Time) ([]model.Candle, error)
 }
 
 // UnitArtifact is the retained JSON payload for one symbol inside a unit.
@@ -172,7 +181,7 @@ func (r *InProcessRunner) runCandidate(unit Unit, cfg execution.Config) ([]byte,
 	symbolResults := make([]UnitArtifact, 0, len(symbols))
 	trades, rejects := 0, 0
 	for _, symbol := range symbols {
-		modelCandles, err := r.Candles.Load(symbol)
+		modelCandles, err := loadCandleWindow(r.Candles, symbol, unit.Range, warmupBars, cfg.Interval)
 		if err != nil {
 			return nil, fmt.Errorf("orchestration: load %s: %w", symbol, err)
 		}
@@ -233,14 +242,14 @@ func (r *InProcessRunner) runControl(unit Unit, cfg execution.Config) ([]byte, e
 
 	results := make([]UnitArtifact, 0, len(symbols))
 	totalTrades, totalRejects := 0, 0
+	warmupBars := 0
+	if unit.Control == string(controls.EMA200Code) {
+		warmupBars = 200
+	}
 	for _, symbol := range symbols {
-		modelCandles, err := r.Candles.Load(symbol)
+		modelCandles, err := loadCandleWindow(r.Candles, symbol, unit.Range, warmupBars, cfg.Interval)
 		if err != nil {
 			return nil, err
-		}
-		warmupBars := 0
-		if unit.Control == string(controls.EMA200Code) {
-			warmupBars = 200
 		}
 		window := windowCandles(modelCandles, unit.Range, warmupBars, cfg.Interval)
 		aggregated := aggregateCandles(window, cfg.Interval)
@@ -370,15 +379,7 @@ func windowCandles(all []model.Candle, rang protocolv2.TimeRange, warmupBars int
 	if warmupBars > 0 && interval > 0 {
 		start = rang.Start.Add(-time.Duration(warmupBars) * interval)
 	}
-	out := make([]model.Candle, 0, len(all))
-	for _, c := range all {
-		t := c.OpenTime.UTC()
-		if t.Before(start) || !t.Before(rang.End) {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
+	return candleSlice(all, start, rang.End)
 }
 
 func toEngineCandles(in []model.Candle) []execution.Candle {
@@ -458,13 +459,28 @@ func filterSignals(signals []execution.CloseConfirmedSignal, rang protocolv2.Tim
 }
 
 func rangeCandles(all []model.Candle, rang protocolv2.TimeRange) []model.Candle {
-	out := make([]model.Candle, 0, len(all))
-	for _, candle := range all {
-		if rang.ContainsInstant(candle.OpenTime.UTC()) {
-			out = append(out, candle)
-		}
+	return candleSlice(all, rang.Start, rang.End)
+}
+
+func loadCandleWindow(store CandleStore, symbol protocolv2.Symbol, rang protocolv2.TimeRange, warmupBars int, interval time.Duration) ([]model.Candle, error) {
+	start := rang.Start
+	if warmupBars > 0 && interval > 0 {
+		start = start.Add(-time.Duration(warmupBars) * interval)
 	}
-	return out
+	if ranged, ok := store.(rangeCandleStore); ok {
+		return ranged.LoadRange(symbol, start, rang.End)
+	}
+	return store.Load(symbol)
+}
+
+func candleSlice(all []model.Candle, start, end time.Time) []model.Candle {
+	first := sort.Search(len(all), func(i int) bool {
+		return !all[i].OpenTime.UTC().Before(start)
+	})
+	last := sort.Search(len(all), func(i int) bool {
+		return !all[i].OpenTime.UTC().Before(end)
+	})
+	return all[first:last]
 }
 
 func (r *InProcessRunner) symbolsForUnit(unit Unit) []protocolv2.Symbol {
