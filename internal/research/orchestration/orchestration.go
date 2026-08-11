@@ -4,6 +4,8 @@
 package orchestration
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -246,11 +248,11 @@ func executeUnit(ctx context.Context, options DevelopmentOptions, unit Unit) (Ch
 	}
 	checkpoint, reused, err := reuseCheckpoint(options, unit)
 	if err == nil && reused {
-		artifact, readErr := os.ReadFile(checkpointPath(options, unit) + ".artifact")
+		artifact, readErr := readCheckpointBytes(checkpointPath(options, unit)+".artifact", checkpoint.ArtifactSHA256)
 		if readErr != nil {
 			return Checkpoint{}, nil, false, readErr
 		}
-		if err := validateAndPersistUnitArtifact(options.Manifest.ID, protocolv2.ReportDir(experimentRoot(options.OutputDir, options.Manifest)), unit, artifact); err != nil {
+		if err := validateUnitArtifact(unit, artifact); err != nil {
 			return Checkpoint{}, nil, false, err
 		}
 		return checkpoint, artifact, true, nil
@@ -263,7 +265,7 @@ func executeUnit(ctx context.Context, options DevelopmentOptions, unit Unit) (Ch
 		notify(options.Progress, Progress{Unit: unit, Err: err})
 		return Checkpoint{}, nil, false, fmt.Errorf("orchestration: run %s: %w", unit.Key(), err)
 	}
-	if err := validateAndPersistUnitArtifact(options.Manifest.ID, protocolv2.ReportDir(experimentRoot(options.OutputDir, options.Manifest)), unit, artifact); err != nil {
+	if err := validateUnitArtifact(unit, artifact); err != nil {
 		return Checkpoint{}, nil, false, err
 	}
 	checkpoint, err = writeCheckpoint(options, unit, artifact)
@@ -341,20 +343,20 @@ func reuseCheckpoint(options DevelopmentOptions, unit Unit) (Checkpoint, bool, e
 	if checkpoint.SchemaVersion != checkpointSchema || checkpoint.ExperimentID != options.Manifest.ID || checkpoint.ManifestHash != options.Manifest.Hash || checkpoint.SourceHash != options.SourceHash || checkpoint.DataHash != options.DataHash || checkpoint.Unit.Key() != unit.Key() {
 		return Checkpoint{}, false, fmt.Errorf("stale checkpoint")
 	}
-	artifact, err := os.ReadFile(path + ".artifact")
-	if err != nil {
+	if _, err := readCheckpointBytes(path+".artifact", checkpoint.ArtifactSHA256); err != nil {
 		return Checkpoint{}, false, err
-	}
-	if digest(artifact) != checkpoint.ArtifactSHA256 {
-		return Checkpoint{}, false, fmt.Errorf("artifact checksum mismatch")
 	}
 	return checkpoint, true, nil
 }
 
 func writeCheckpoint(options DevelopmentOptions, unit Unit, artifact []byte) (Checkpoint, error) {
 	path := checkpointPath(options, unit)
-	checkpoint := Checkpoint{SchemaVersion: checkpointSchema, ExperimentID: options.Manifest.ID, ManifestHash: options.Manifest.Hash, SourceHash: options.SourceHash, DataHash: options.DataHash, Unit: unit, ArtifactSHA256: digest(artifact), CompletedAt: time.Now().UTC()}
-	if err := writeAtomic(path+".artifact", artifact); err != nil {
+	encoded, err := compressArtifact(artifact)
+	if err != nil {
+		return Checkpoint{}, err
+	}
+	checkpoint := Checkpoint{SchemaVersion: checkpointSchema, ExperimentID: options.Manifest.ID, ManifestHash: options.Manifest.Hash, SourceHash: options.SourceHash, DataHash: options.DataHash, Unit: unit, ArtifactSHA256: digest(encoded), CompletedAt: time.Now().UTC()}
+	if err := writeAtomic(path+".artifact", encoded); err != nil {
 		return Checkpoint{}, err
 	}
 	if _, err := writeJSONAtomic(path, checkpoint); err != nil {
@@ -522,12 +524,12 @@ func Final(ctx context.Context, outputDir string, m manifest.Manifest, sourceHas
 	return final, nil
 }
 
-func validateAndPersistUnitArtifact(experimentID protocolv2.ExperimentID, reportDir string, unit Unit, artifact []byte) error {
+func validateUnitArtifact(unit Unit, artifact []byte) error {
 	var typed UnitResult
 	if err := json.Unmarshal(artifact, &typed); err != nil || validateUnitResult(unit, typed) != nil {
 		return fmt.Errorf("orchestration: runner returned an invalid unit artifact for %s", unit.Key())
 	}
-	return persistUnitReports(experimentID, reportDir, typed)
+	return nil
 }
 
 func validateUnitResult(unit Unit, result UnitResult) error {
@@ -656,12 +658,10 @@ func validateDevelopmentCompleteness(root string, m manifest.Manifest, report De
 		if checkpoint.SchemaVersion != checkpointSchema || checkpoint.ExperimentID != report.ExperimentID || checkpoint.ManifestHash != report.ManifestHash || checkpoint.SourceHash != report.SourceHash || checkpoint.DataHash != report.DataHash {
 			return fmt.Errorf("orchestration: stale development checkpoint metadata for %s", key)
 		}
-		artifact, err := os.ReadFile(filepath.Join(protocolv2.CheckpointDir(root), key+".json.artifact"))
+		artifactPath := filepath.Join(protocolv2.CheckpointDir(root), key+".json.artifact")
+		artifact, err := readCheckpointBytes(artifactPath, checkpoint.ArtifactSHA256)
 		if err != nil {
 			return fmt.Errorf("orchestration: development artifact %s: %w", key, err)
-		}
-		if digest(artifact) != checkpoint.ArtifactSHA256 {
-			return fmt.Errorf("orchestration: development artifact checksum mismatch for %s", key)
 		}
 		var typed UnitResult
 		if err := json.Unmarshal(artifact, &typed); err != nil || typed.Unit.Key() != key {
@@ -875,18 +875,57 @@ func neighboringCandidatesRobust(m manifest.Manifest, records []SelectionRecord,
 
 func readCheckpointArtifact(root string, checkpoint Checkpoint) (UnitResult, error) {
 	path := filepath.Join(protocolv2.CheckpointDir(root), checkpoint.Unit.Key()+".json.artifact")
-	raw, err := os.ReadFile(path)
+	raw, err := readCheckpointBytes(path, checkpoint.ArtifactSHA256)
 	if err != nil {
 		return UnitResult{}, err
-	}
-	if digest(raw) != checkpoint.ArtifactSHA256 {
-		return UnitResult{}, fmt.Errorf("orchestration: checkpoint artifact changed for %s", checkpoint.Unit.Key())
 	}
 	var result UnitResult
 	if err := json.Unmarshal(raw, &result); err != nil || result.Unit.Key() != checkpoint.Unit.Key() {
 		return UnitResult{}, fmt.Errorf("orchestration: invalid checkpoint artifact for %s", checkpoint.Unit.Key())
 	}
 	return result, nil
+}
+
+func compressArtifact(raw []byte) ([]byte, error) {
+	var buffer bytes.Buffer
+	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestSpeed)
+	if err != nil {
+		return nil, fmt.Errorf("orchestration: create artifact compressor: %w", err)
+	}
+	if _, err := writer.Write(raw); err != nil {
+		_ = writer.Close()
+		return nil, fmt.Errorf("orchestration: compress artifact: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("orchestration: finish artifact compression: %w", err)
+	}
+	return buffer.Bytes(), nil
+}
+
+func readCheckpointBytes(path string, expected protocolv2.SHA256Hex) ([]byte, error) {
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if digest(encoded) != expected {
+		return nil, fmt.Errorf("artifact checksum mismatch")
+	}
+	if len(encoded) < 2 || encoded[0] != 0x1f || encoded[1] != 0x8b {
+		return encoded, nil
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("orchestration: open compressed artifact: %w", err)
+	}
+	raw, readErr := io.ReadAll(reader)
+	closeErr := reader.Close()
+	if readErr != nil {
+		return nil, fmt.Errorf("orchestration: decompress artifact: %w", readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("orchestration: close artifact decompressor: %w", closeErr)
+	}
+	return raw, nil
 }
 
 func medianFloat(values []float64) float64 {

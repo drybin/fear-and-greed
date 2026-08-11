@@ -54,6 +54,14 @@ func TestDevelopmentResumesAndRejectsStaleCheckpoint(t *testing.T) {
 	if second.calls != len(report.Units)-1 {
 		t.Fatalf("resume ran %d units, want %d", second.calls, len(report.Units)-1)
 	}
+	artifactPath := filepath.Join(protocolv2.CheckpointDir(protocolv2.ExperimentRoot(dir, m.ID)), report.Units[0].Unit.Key()+".json.artifact")
+	artifact, err := os.ReadFile(artifactPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(artifact) < 2 || artifact[0] != 0x1f || artifact[1] != 0x8b {
+		t.Fatal("checkpoint artifact is not gzip-compressed")
+	}
 	if _, err := orchestration.Development(context.Background(), options(m, dir, &runner{}, "source-b")); err == nil {
 		t.Fatal("expected stale checkpoint rejection")
 	}
@@ -76,8 +84,8 @@ func TestDevelopmentNeverPassesHoldoutAndFinalOpensOnce(t *testing.T) {
 		t.Fatal("expected checkpoints")
 	}
 	firstReport := filepath.Join(protocolv2.ReportDir(protocolv2.ExperimentRoot(dir, m.ID)), "units", report.Units[0].Unit.Key(), "BTCUSDT", "fold.json.sha256")
-	if _, err := os.Stat(firstReport); err != nil {
-		t.Fatalf("versioned unit report was not persisted: %v", err)
+	if _, err := os.Stat(firstReport); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("development unexpectedly duplicated checkpoint reports: %v", err)
 	}
 	for _, unit := range development.seen {
 		if strings.HasSuffix(string(unit.Fold), "-test") && unit.Control == "" && unit.Strategy.Code == m.Strategies[0].Ref.Code && unit.Candidate != "alternate" {
