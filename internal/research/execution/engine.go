@@ -307,7 +307,9 @@ func (a *account) exit(c Candle, reference, qty float64, reason ExitReason) {
 	if remaining == 0 {
 		// Reconcile the persisted final fill from the entry and prior fills,
 		// rather than from a separately rounded running balance.
-		qty = finalExitQuantity(p)
+		if reconciled := finalExitQuantity(p); reconciled > 0 && finite(reconciled) {
+			qty = reconciled
+		}
 	}
 	price := a.sellPrice(reference)
 	notional := protocolv2.RoundFee(price * qty)

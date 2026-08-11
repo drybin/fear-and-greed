@@ -3,6 +3,7 @@ package execution_test
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -180,6 +181,16 @@ func TestDomainRecordInvariants(t *testing.T) {
 		}
 
 		require.NoError(t, trade.Validate())
+	})
+
+	t.Run("quantity validation tolerates one ulp but rejects a real sub-tick value", func(t *testing.T) {
+		base := protocolv2.RoundQuantity(10_000_000.12345678)
+		oneULP := math.Nextafter(base, math.Inf(1))
+		require.NotEqual(t, oneULP, protocolv2.RoundQuantity(oneULP))
+		require.NoError(t, testAudit("ulp", oneULP, testTime.Add(time.Hour)).Validate())
+
+		notRounded := testAudit("not-rounded", 1.000000001, testTime.Add(time.Hour))
+		require.Error(t, notRounded.Validate())
 	})
 
 	t.Run("equity reconciles cash and open value", func(t *testing.T) {

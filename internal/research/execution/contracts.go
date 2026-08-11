@@ -556,17 +556,31 @@ func validatePrice(name string, value float64) error {
 }
 
 func validateQuantity(name string, value float64) error {
-	if value <= 0 || !isRounded(value, protocolv2.RoundQuantity) {
-		return fmt.Errorf("execution: %s must be finite, positive, and quantity-rounded", name)
+	rounded := protocolv2.RoundQuantity(value)
+	if value <= 0 || !isQuantityRounded(value, rounded) {
+		return fmt.Errorf("execution: %s must be finite, positive, and quantity-rounded (value=%.17g rounded=%.17g)", name, value, rounded)
 	}
 	return nil
 }
 
 func validateNonNegativeQuantity(name string, value float64) error {
-	if value < 0 || !isRounded(value, protocolv2.RoundQuantity) {
-		return fmt.Errorf("execution: %s must be finite, non-negative, and quantity-rounded", name)
+	rounded := protocolv2.RoundQuantity(value)
+	if value < 0 || !isQuantityRounded(value, rounded) {
+		return fmt.Errorf("execution: %s must be finite, non-negative, and quantity-rounded (value=%.17g rounded=%.17g)", name, value, rounded)
 	}
 	return nil
+}
+
+func isQuantityRounded(value, rounded float64) bool {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return false
+	}
+	scale := math.Max(math.Abs(value), math.Abs(rounded))
+	if scale == 0 {
+		return true
+	}
+	ulp := math.Nextafter(scale, math.Inf(1)) - scale
+	return math.Abs(value-rounded) <= 8*ulp
 }
 
 func quantitiesReconcile(left, right float64) bool {

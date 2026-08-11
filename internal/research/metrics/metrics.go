@@ -122,7 +122,7 @@ func Calculate(in Input) (Summary, error) {
 
 func normalizeTrade(t execution.TradeState, risk float64) (Trade, error) {
 	if err := t.Validate(); err != nil {
-		return Trade{}, fmt.Errorf("metrics: invalid trade: %w", err)
+		return Trade{}, fmt.Errorf("metrics: invalid trade %s: %w", t.TradeID, err)
 	}
 	result := Trade{ID: t.TradeID, Symbol: string(t.Entry.Symbol), OpenedAt: t.Entry.FillTime}
 	entry := t.Entry.Price*t.Entry.Quantity + t.Entry.Commission
