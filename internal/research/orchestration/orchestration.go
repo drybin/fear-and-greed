@@ -4,7 +4,7 @@
 package orchestration
 
 import (
-	"bytes"
+	"bufio"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -343,7 +343,7 @@ func reuseCheckpoint(options DevelopmentOptions, unit Unit) (Checkpoint, bool, e
 	if checkpoint.SchemaVersion != checkpointSchema || checkpoint.ExperimentID != options.Manifest.ID || checkpoint.ManifestHash != options.Manifest.Hash || checkpoint.SourceHash != options.SourceHash || checkpoint.DataHash != options.DataHash || checkpoint.Unit.Key() != unit.Key() {
 		return Checkpoint{}, false, fmt.Errorf("stale checkpoint")
 	}
-	if _, err := readCheckpointBytes(path+".artifact", checkpoint.ArtifactSHA256); err != nil {
+	if err := verifyArtifactFile(path+".artifact", checkpoint.ArtifactSHA256); err != nil {
 		return Checkpoint{}, false, err
 	}
 	return checkpoint, true, nil
@@ -351,14 +351,11 @@ func reuseCheckpoint(options DevelopmentOptions, unit Unit) (Checkpoint, bool, e
 
 func writeCheckpoint(options DevelopmentOptions, unit Unit, artifact []byte) (Checkpoint, error) {
 	path := checkpointPath(options, unit)
-	encoded, err := compressArtifact(artifact)
+	artifactHash, err := writeCompressedArtifact(path+".artifact", artifact)
 	if err != nil {
 		return Checkpoint{}, err
 	}
-	checkpoint := Checkpoint{SchemaVersion: checkpointSchema, ExperimentID: options.Manifest.ID, ManifestHash: options.Manifest.Hash, SourceHash: options.SourceHash, DataHash: options.DataHash, Unit: unit, ArtifactSHA256: digest(encoded), CompletedAt: time.Now().UTC()}
-	if err := writeAtomic(path+".artifact", encoded); err != nil {
-		return Checkpoint{}, err
-	}
+	checkpoint := Checkpoint{SchemaVersion: checkpointSchema, ExperimentID: options.Manifest.ID, ManifestHash: options.Manifest.Hash, SourceHash: options.SourceHash, DataHash: options.DataHash, Unit: unit, ArtifactSHA256: artifactHash, CompletedAt: time.Now().UTC()}
 	if _, err := writeJSONAtomic(path, checkpoint); err != nil {
 		return Checkpoint{}, err
 	}
@@ -886,46 +883,98 @@ func readCheckpointArtifact(root string, checkpoint Checkpoint) (UnitResult, err
 	return result, nil
 }
 
-func compressArtifact(raw []byte) ([]byte, error) {
-	var buffer bytes.Buffer
-	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestSpeed)
+func writeCompressedArtifact(path string, raw []byte) (protocolv2.SHA256Hex, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return nil, fmt.Errorf("orchestration: create artifact compressor: %w", err)
+		return "", fmt.Errorf("orchestration: create compressed artifact: %w", err)
+	}
+	name := tmp.Name()
+	defer func() { _ = os.Remove(name) }()
+	hasher := sha256.New()
+	writer, err := gzip.NewWriterLevel(io.MultiWriter(tmp, hasher), gzip.BestSpeed)
+	if err != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("orchestration: create artifact compressor: %w", err)
 	}
 	if _, err := writer.Write(raw); err != nil {
 		_ = writer.Close()
-		return nil, fmt.Errorf("orchestration: compress artifact: %w", err)
+		_ = tmp.Close()
+		return "", fmt.Errorf("orchestration: compress artifact: %w", err)
 	}
 	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("orchestration: finish artifact compression: %w", err)
+		_ = tmp.Close()
+		return "", fmt.Errorf("orchestration: finish artifact compression: %w", err)
 	}
-	return buffer.Bytes(), nil
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return "", fmt.Errorf("orchestration: sync compressed artifact: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("orchestration: close compressed artifact: %w", err)
+	}
+	if err := os.Rename(name, path); err != nil {
+		return "", fmt.Errorf("orchestration: commit compressed artifact: %w", err)
+	}
+	return protocolv2.SHA256Hex(hex.EncodeToString(hasher.Sum(nil))), nil
 }
 
 func readCheckpointBytes(path string, expected protocolv2.SHA256Hex) ([]byte, error) {
-	encoded, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	if digest(encoded) != expected {
+	defer func() { _ = file.Close() }()
+	hasher := sha256.New()
+	buffered := bufio.NewReader(io.TeeReader(file, hasher))
+	header, err := buffered.Peek(2)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	var raw []byte
+	if len(header) < 2 || header[0] != 0x1f || header[1] != 0x8b {
+		raw, err = io.ReadAll(buffered)
+	} else {
+		reader, openErr := gzip.NewReader(buffered)
+		if openErr != nil {
+			return nil, fmt.Errorf("orchestration: open compressed artifact: %w", openErr)
+		}
+		raw, err = io.ReadAll(reader)
+		closeErr := reader.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("orchestration: read artifact: %w", err)
+	}
+	if _, err := io.Copy(io.Discard, buffered); err != nil {
+		return nil, fmt.Errorf("orchestration: finish artifact checksum: %w", err)
+	}
+	actual := protocolv2.SHA256Hex(hex.EncodeToString(hasher.Sum(nil)))
+	if actual != expected {
 		return nil, fmt.Errorf("artifact checksum mismatch")
 	}
-	if len(encoded) < 2 || encoded[0] != 0x1f || encoded[1] != 0x8b {
-		return encoded, nil
-	}
-	reader, err := gzip.NewReader(bytes.NewReader(encoded))
-	if err != nil {
-		return nil, fmt.Errorf("orchestration: open compressed artifact: %w", err)
-	}
-	raw, readErr := io.ReadAll(reader)
-	closeErr := reader.Close()
-	if readErr != nil {
-		return nil, fmt.Errorf("orchestration: decompress artifact: %w", readErr)
-	}
-	if closeErr != nil {
-		return nil, fmt.Errorf("orchestration: close artifact decompressor: %w", closeErr)
-	}
 	return raw, nil
+}
+
+func verifyArtifactFile(path string, expected protocolv2.SHA256Hex) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return err
+	}
+	actual := protocolv2.SHA256Hex(hex.EncodeToString(hasher.Sum(nil)))
+	if actual != expected {
+		return fmt.Errorf("artifact checksum mismatch")
+	}
+	return nil
 }
 
 func medianFloat(values []float64) float64 {
