@@ -42,6 +42,20 @@ freeze явно авторизуйте final:
 AUTHORIZE_HOLDOUT=1 SKIP_FETCH=1 ./scripts/run_research_v2.sh
 ```
 
+Если development полностью завершился, но `freeze` был прерван из-за ресурсов,
+его можно заморозить исправленным CLI без повторного расчёта 177 unit-ов:
+
+```bash
+./bin/cli research-validate freeze --existing-development \
+  --manifest /absolute/path/to/existing/manifest.json \
+  --candle-dir /absolute/path/to/data/research-v2 \
+  --output /absolute/path/to/existing/output \
+  --workdir /absolute/path/to/repository
+```
+
+Этот режим не запускает evaluator и сохраняет исходный source hash готового
+development. Для `development` и `final` послабление недоступно.
+
 Период можно зафиксировать явно:
 
 ```bash

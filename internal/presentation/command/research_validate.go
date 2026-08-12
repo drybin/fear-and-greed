@@ -142,9 +142,14 @@ func developmentResearchCommand() *cli.Command {
 }
 
 func freezeResearchCommand() *cli.Command {
+	flags := phaseFlags(false)
+	flags = append(flags, &cli.BoolFlag{
+		Name:  "existing-development",
+		Usage: "freeze checksum-valid existing development without requiring the current Git revision; never runs an evaluator",
+	})
 	return &cli.Command{
 		Name: "freeze", Usage: "write the immutable candidate bundle; does not run final",
-		Flags: phaseFlags(false),
+		Flags: flags,
 		Action: func(c *cli.Context) error {
 			m, sourceHash, dataHash, _, err := loadPhase(c)
 			if err != nil {
@@ -209,14 +214,19 @@ func loadPhase(c *cli.Context) (manifest.Manifest, protocolv2.SHA256Hex, protoco
 	if err != nil {
 		return manifest.Manifest{}, "", "", nil, err
 	}
-	if actualSource.GitRevision != m.Source.GitRevision || actualSource.Dirty != m.Source.Dirty {
+	existingDevelopment := c.Bool("existing-development")
+	if !existingDevelopment && (actualSource.GitRevision != m.Source.GitRevision || actualSource.Dirty != m.Source.Dirty) {
 		return manifest.Manifest{}, "", "", nil, fmt.Errorf("source revision differs from manifest: current %s dirty=%t, manifest %s dirty=%t", actualSource.GitRevision, actualSource.Dirty, m.Source.GitRevision, m.Source.Dirty)
 	}
-	if actualSource.Dirty {
+	if !existingDevelopment && actualSource.Dirty {
 		return manifest.Manifest{}, "", "", nil, fmt.Errorf("research phases require a clean worktree; commit the exact source and regenerate the manifest")
 	}
 	sourceHash, dataHash := protocolv2.SHA256Hex(c.String("source-hash")), protocolv2.SHA256Hex(c.String("data-hash"))
-	derivedSourceHash := hashText(actualSource.GitRevision)
+	verifiedRevision := actualSource.GitRevision
+	if existingDevelopment {
+		verifiedRevision = m.Source.GitRevision
+	}
+	derivedSourceHash := hashText(verifiedRevision)
 	if sourceHash != "" && sourceHash != derivedSourceHash {
 		return manifest.Manifest{}, "", "", nil, fmt.Errorf("source hash does not match verified Git revision")
 	}

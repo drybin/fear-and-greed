@@ -671,13 +671,12 @@ func validateDevelopmentCompleteness(root string, m manifest.Manifest, report De
 			return fmt.Errorf("orchestration: stale development checkpoint metadata for %s", key)
 		}
 		artifactPath := filepath.Join(protocolv2.CheckpointDir(root), key+".json.artifact")
-		artifact, err := readCheckpointBytes(artifactPath, checkpoint.ArtifactSHA256)
+		artifactUnit, err := readCheckpointUnit(artifactPath, checkpoint.ArtifactSHA256)
 		if err != nil {
 			return fmt.Errorf("orchestration: development artifact %s: %w", key, err)
 		}
-		var typed UnitResult
-		if err := json.Unmarshal(artifact, &typed); err != nil || typed.Unit.Key() != key {
-			return fmt.Errorf("orchestration: invalid development artifact for %s", key)
+		if artifactUnit.Key() != key {
+			return fmt.Errorf("orchestration: development artifact identity mismatch for %s", key)
 		}
 	}
 	return nil
@@ -990,6 +989,68 @@ func verifyArtifactFile(path string, expected protocolv2.SHA256Hex) error {
 		return fmt.Errorf("artifact checksum mismatch")
 	}
 	return nil
+}
+
+// readCheckpointUnit verifies the complete stored artifact while decoding only
+// its leading unit identity. Freeze does not consume symbol-level evidence and
+// must not materialize large trades/equity/audit arrays merely to validate a
+// checksum-protected checkpoint.
+func readCheckpointUnit(path string, expected protocolv2.SHA256Hex) (Unit, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Unit{}, err
+	}
+	defer func() { _ = file.Close() }()
+
+	hasher := sha256.New()
+	buffered := bufio.NewReader(io.TeeReader(file, hasher))
+	header, err := buffered.Peek(2)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return Unit{}, err
+	}
+
+	var source io.Reader = buffered
+	var compressed *gzip.Reader
+	if len(header) == 2 && header[0] == 0x1f && header[1] == 0x8b {
+		compressed, err = gzip.NewReader(buffered)
+		if err != nil {
+			return Unit{}, fmt.Errorf("orchestration: open compressed artifact: %w", err)
+		}
+		source = compressed
+	}
+
+	decoder := json.NewDecoder(source)
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return Unit{}, fmt.Errorf("orchestration: invalid checkpoint artifact JSON")
+	}
+	if !decoder.More() {
+		return Unit{}, fmt.Errorf("orchestration: checkpoint artifact has no unit")
+	}
+	field, err := decoder.Token()
+	if err != nil || field != "unit" {
+		return Unit{}, fmt.Errorf("orchestration: checkpoint artifact unit must be first")
+	}
+	var unit Unit
+	if err := decoder.Decode(&unit); err != nil {
+		return Unit{}, fmt.Errorf("orchestration: decode checkpoint unit: %w", err)
+	}
+	if _, err := io.Copy(io.Discard, source); err != nil {
+		return Unit{}, fmt.Errorf("orchestration: verify checkpoint payload: %w", err)
+	}
+	if compressed != nil {
+		if err := compressed.Close(); err != nil {
+			return Unit{}, fmt.Errorf("orchestration: close checkpoint decompressor: %w", err)
+		}
+	}
+	if _, err := io.Copy(io.Discard, buffered); err != nil {
+		return Unit{}, fmt.Errorf("orchestration: finish checkpoint checksum: %w", err)
+	}
+	actual := protocolv2.SHA256Hex(hex.EncodeToString(hasher.Sum(nil)))
+	if actual != expected {
+		return Unit{}, fmt.Errorf("artifact checksum mismatch")
+	}
+	return unit, nil
 }
 
 func medianFloat(values []float64) float64 {
