@@ -121,7 +121,7 @@ func Development(ctx context.Context, options DevelopmentOptions) (DevelopmentRe
 	report := DevelopmentReport{ExperimentID: options.Manifest.ID, ManifestHash: options.Manifest.Hash, SourceHash: options.SourceHash, DataHash: options.DataHash}
 	total := expectedDevelopmentUnits(options.Manifest, len(folds))
 	completed := 0
-	for _, strategy := range options.Manifest.Strategies {
+	for _, strategy := range developmentStrategyOrder(options.Manifest.Strategies) {
 		for _, fold := range folds {
 			symbols, err := eligibleSymbols(options.Manifest, options.CandleStore, fold.Test, strategy.WarmupBars)
 			if err != nil {
@@ -194,6 +194,17 @@ func Development(ctx context.Context, options DevelopmentOptions) (DevelopmentRe
 		return DevelopmentReport{}, err
 	}
 	return report, nil
+}
+
+func developmentStrategyOrder(strategies []manifest.Strategy) []manifest.Strategy {
+	ordered := append([]manifest.Strategy(nil), strategies...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].WarmupBars == ordered[j].WarmupBars {
+			return ordered[i].Ref.String() < ordered[j].Ref.String()
+		}
+		return ordered[i].WarmupBars > ordered[j].WarmupBars
+	})
+	return ordered
 }
 
 // releaseResearchMemory bounds the resident set between independently
@@ -543,7 +554,11 @@ func validateUnitResult(unit Unit, result UnitResult) error {
 			return fmt.Errorf("duplicate symbol artifact")
 		}
 		seen[artifact.Symbol] = struct{}{}
-		if artifact.TradeCount != len(artifact.Trades) || artifact.RejectionCount != len(artifact.Rejections) {
+		if artifact.SummaryOnly {
+			if !strings.HasSuffix(string(unit.Fold), "-train") || len(artifact.Trades) != 0 || len(artifact.Equity) != 0 || len(artifact.Rejections) != 0 || len(artifact.Audit) != 0 {
+				return fmt.Errorf("invalid summary-only training artifact")
+			}
+		} else if artifact.TradeCount != len(artifact.Trades) || artifact.RejectionCount != len(artifact.Rejections) {
 			return fmt.Errorf("symbol artifact evidence count mismatch")
 		}
 		trades += artifact.TradeCount

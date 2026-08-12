@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/drybin/fear-and-greed/internal/domain/model"
@@ -65,6 +67,7 @@ type UnitArtifact struct {
 	Equity         []execution.EquitySnapshot  `json:"equity"`
 	Rejections     []execution.SignalRejection `json:"rejections"`
 	Audit          []execution.AuditEvent      `json:"audit"`
+	SummaryOnly    bool                        `json:"summary_only,omitempty"`
 }
 
 // UnitResult is the typed, machine-readable artifact consumed by train-only
@@ -199,7 +202,7 @@ func (r *InProcessRunner) runCandidate(unit Unit, cfg execution.Config) ([]byte,
 			return nil, err
 		}
 		filteredSignals := filterSignals(signals, unit.Range)
-		result, err := engine.Run(toEngineCandles(scored), filteredSignals)
+		result, err := engine.Run(aggregateCandles(scored, cfg.Interval), filteredSignals)
 		if err != nil {
 			return nil, err
 		}
@@ -214,12 +217,21 @@ func (r *InProcessRunner) runCandidate(unit Unit, cfg execution.Config) ([]byte,
 		}
 		trades += summary.TradeCount
 		rejects += len(result.Rejections)
-		symbolResults = append(symbolResults, UnitArtifact{
+		artifact := UnitArtifact{
 			Unit: unit, Symbol: symbol, Survivorship: eligibility.SurvivorshipWarning, Metrics: compactMetrics(summary, cfg.Interval),
 			TradeCount: summary.TradeCount, RejectionCount: len(result.Rejections),
 			RealizedCash: result.RealizedCash, FinalEquity: lastEquity(result), EngineAuditLen: len(result.Audit),
-			Trades: result.Trades, Equity: compactEquity(result.Equity, cfg.Interval), Rejections: result.Rejections, Audit: result.Audit,
-		})
+		}
+		if strings.HasSuffix(string(unit.Fold), "-train") {
+			artifact.SummaryOnly = true
+		} else {
+			artifact.Trades = result.Trades
+			artifact.Equity = compactEquity(result.Equity, cfg.Interval)
+			artifact.Rejections = result.Rejections
+			artifact.Audit = result.Audit
+		}
+		symbolResults = append(symbolResults, artifact)
+		debug.FreeOSMemory()
 	}
 	if len(symbolResults) == 0 {
 		return nil, fmt.Errorf("orchestration: no eligible candles for %s", unit.Key())
@@ -380,14 +392,6 @@ func windowCandles(all []model.Candle, rang protocolv2.TimeRange, warmupBars int
 		start = rang.Start.Add(-time.Duration(warmupBars) * interval)
 	}
 	return candleSlice(all, start, rang.End)
-}
-
-func toEngineCandles(in []model.Candle) []execution.Candle {
-	out := make([]execution.Candle, len(in))
-	for i, c := range in {
-		out[i] = execution.Candle{Time: c.OpenTime.UTC(), Open: c.Open, High: c.High, Low: c.Low, Close: c.Close}
-	}
-	return out
 }
 
 // compactMetrics retains exact computed metrics while sampling only the

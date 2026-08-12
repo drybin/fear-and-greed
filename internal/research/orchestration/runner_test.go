@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -65,12 +66,17 @@ func TestInProcessRunnerAndPreflight(t *testing.T) {
 	artifact, err := runner.Run(context.Background(), orchestration.Unit{
 		Strategy:  protocolv2.StrategyRef{Code: "breakout-retest-long-v2", Version: "v2.0.0"},
 		Candidate: "default",
-		Fold:      "fold-0",
+		Fold:      "fold-0-train",
 		Cost:      "base",
 		Range:     rang,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, artifact)
+	var candidateResult orchestration.UnitResult
+	require.NoError(t, json.Unmarshal(artifact, &candidateResult))
+	require.NotEmpty(t, candidateResult.Symbols)
+	require.True(t, candidateResult.Symbols[0].SummaryOnly)
+	require.Empty(t, candidateResult.Symbols[0].Equity)
 
 	controlArtifact, err := runner.Run(context.Background(), orchestration.Unit{
 		Strategy:  protocolv2.StrategyRef{Code: "cash-control", Version: "v1"},
