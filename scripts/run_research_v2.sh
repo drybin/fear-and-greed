@@ -16,6 +16,8 @@ SEED="${SEED:-42}"
 DATA_DIR="${DATA_DIR:-$ROOT/data/research-v2}"
 SYMBOLS_FILE="${SYMBOLS_FILE:-$ROOT/scripts/symbols_top50.txt}"
 AUTHORIZE_HOLDOUT="${AUTHORIZE_HOLDOUT:-0}"
+FINAL_ONLY="${FINAL_ONLY:-0}"
+ORCHESTRATION_UPGRADE="${ORCHESTRATION_UPGRADE:-0}"
 SKIP_FETCH="${SKIP_FETCH:-0}"
 SKIP_VERIFY="${SKIP_VERIFY:-0}"
 VERIFY_DOCKER_IMAGE="${VERIFY_DOCKER_IMAGE:-golang:1.22}"
@@ -53,13 +55,15 @@ run_logged() {
 echo "Protocol-v2 run: cutoff=$CUTOFF revision=$REVISION"
 echo "Run directory: $RUN_DIR"
 
-if [[ "$SKIP_FETCH" != "1" ]]; then
+if [[ "$FINAL_ONLY" != "1" && "$SKIP_FETCH" != "1" ]]; then
   BIN="$BIN" DATA_DIR="$DATA_DIR" SYMBOLS_FILE="$SYMBOLS_FILE" \
     SINCE="$SINCE" UNTIL="$UNTIL" INTERVAL=1m MARKET=spot \
     "$ROOT/scripts/fetch_research_v2_top50.sh"
 fi
 
-if [[ "$SKIP_VERIFY" == "1" ]]; then
+if [[ "$FINAL_ONLY" == "1" ]]; then
+  echo "Preparation and development skipped explicitly with FINAL_ONLY=1."
+elif [[ "$SKIP_VERIFY" == "1" ]]; then
   echo "Verification skipped explicitly with SKIP_VERIFY=1."
 elif command -v go >/dev/null 2>&1; then
   run_logged "$BIN" research-validate verify --workdir "$ROOT"
@@ -75,21 +79,30 @@ else
   exit 1
 fi
 
-run_logged "$BIN" research-validate prepare \
-  --symbols "$SYMBOLS_FILE" \
-  --candle-dir "$DATA_DIR" \
-  --manifest "$MANIFEST" \
-  --cutoff "$CUTOFF" \
-  --seed "$SEED" \
-  --workdir "$ROOT"
+if [[ "$FINAL_ONLY" != "1" ]]; then
+  run_logged "$BIN" research-validate prepare \
+    --symbols "$SYMBOLS_FILE" \
+    --candle-dir "$DATA_DIR" \
+    --manifest "$MANIFEST" \
+    --cutoff "$CUTOFF" \
+    --seed "$SEED" \
+    --workdir "$ROOT"
 
-run_logged "$BIN" research-validate development \
-  --manifest "$MANIFEST" \
-  --candle-dir "$DATA_DIR" \
-  --output "$OUTPUT" \
-  --workdir "$ROOT"
+  run_logged "$BIN" research-validate development \
+    --manifest "$MANIFEST" \
+    --candle-dir "$DATA_DIR" \
+    --output "$OUTPUT" \
+    --workdir "$ROOT"
 
-run_logged "$BIN" research-validate freeze \
+  run_logged "$BIN" research-validate freeze \
+    --manifest "$MANIFEST" \
+    --candle-dir "$DATA_DIR" \
+    --output "$OUTPUT" \
+    --workdir "$ROOT"
+fi
+
+run_logged "$BIN" research-validate review \
+  --existing-development \
   --manifest "$MANIFEST" \
   --candle-dir "$DATA_DIR" \
   --output "$OUTPUT" \
@@ -103,8 +116,14 @@ if [[ "$AUTHORIZE_HOLDOUT" != "1" ]]; then
   exit 0
 fi
 
+FINAL_ARGS=()
+if [[ "$ORCHESTRATION_UPGRADE" == "1" ]]; then
+  FINAL_ARGS+=(--orchestration-upgrade)
+fi
+
 run_logged "$BIN" research-validate final \
   --authorize-holdout \
+  "${FINAL_ARGS[@]}" \
   --manifest "$MANIFEST" \
   --candle-dir "$DATA_DIR" \
   --output "$OUTPUT" \

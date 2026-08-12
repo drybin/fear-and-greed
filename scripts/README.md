@@ -9,7 +9,7 @@
 ```
 
 Скрипт последовательно выполняет `fetch-data`, `verify`, `prepare`,
-`development` и `freeze`. Повторный запуск продолжает checksum-valid
+`development`, `freeze` и компактный pre-holdout `review`. Повторный запуск продолжает checksum-valid
 checkpoints. Данные, manifest, журнал и результаты сохраняются под
 `data/research-v2/`; CSV не удаляются. Скрипт ничего не компилирует: готовый
 CLI должен находиться в `bin/cli`, либо его путь передаётся через
@@ -54,7 +54,25 @@ AUTHORIZE_HOLDOUT=1 SKIP_FETCH=1 ./scripts/run_research_v2.sh
 ```
 
 Этот режим не запускает evaluator и сохраняет исходный source hash готового
-development. Для `development` и `final` послабление недоступно.
+development.
+
+Для уже замороженного запуска сначала сформируйте review, не открывая holdout:
+
+```bash
+FINAL_ONLY=1 RUN_DIR=/absolute/path/to/run ./scripts/run_research_v2.sh
+```
+
+Если бинарник содержит только проверенные исправления orchestration поверх
+frozen commit, final разрешается отдельным флагом. Git автоматически отклонит
+любое изменение стратегий, execution, metrics или загрузки данных:
+
+```bash
+FINAL_ONLY=1 AUTHORIZE_HOLDOUT=1 ORCHESTRATION_UPGRADE=1 \
+  RUN_DIR=/absolute/path/to/run ./scripts/run_research_v2.sh
+```
+
+После прерывания эта же команда продолжает недостающие holdout units под
+неизменным `opened.json`; уже завершённые units повторно не рассчитываются.
 
 Период можно зафиксировать явно:
 

@@ -67,7 +67,7 @@ func TestDevelopmentResumesAndRejectsStaleCheckpoint(t *testing.T) {
 	}
 }
 
-func TestDevelopmentNeverPassesHoldoutAndFinalOpensOnce(t *testing.T) {
+func TestDevelopmentNeverPassesHoldoutAndFinalResumesSameOpening(t *testing.T) {
 	m := fixtureManifest(t)
 	dir := t.TempDir()
 	development := &runner{}
@@ -108,8 +108,105 @@ func TestDevelopmentNeverPassesHoldoutAndFinalOpensOnce(t *testing.T) {
 			t.Fatal("final received a range outside the locked holdout")
 		}
 	}
+	openedPath := filepath.Join(protocolv2.HoldoutDir(protocolv2.ExperimentRoot(dir, m.ID)), "opened.json")
+	openedBefore, err := os.ReadFile(openedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondReport, err := orchestration.Final(context.Background(), dir, m, "source-a", "data-a", final, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openedAfter, err := os.ReadFile(openedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(openedBefore) != string(openedAfter) || len(secondReport.Units) != len(finalReport.Units) {
+		t.Fatal("resume changed the immutable opening or completed report")
+	}
+	if final.calls != len(m.Strategies)*2 {
+		t.Fatalf("completed final reran evaluator: %d calls", final.calls)
+	}
+	finalPath := filepath.Join(protocolv2.HoldoutDir(protocolv2.ExperimentRoot(dir, m.ID)), "final.json")
+	finalBytes, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(finalPath, append(finalBytes, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := orchestration.Final(context.Background(), dir, m, "source-a", "data-a", final, nil); err == nil {
-		t.Fatal("expected second holdout opening rejection")
+		t.Fatal("expected changed final report checksum rejection")
+	}
+}
+
+func TestFinalResumesCheckpointedUnitsAfterInterruption(t *testing.T) {
+	m := fixtureManifest(t)
+	dir := t.TempDir()
+	if _, err := orchestration.Development(context.Background(), options(m, dir, &runner{}, "source-a")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := orchestration.Freeze(dir, m, "source-a", "data-a"); err != nil {
+		t.Fatal(err)
+	}
+
+	interrupted := &runner{fail: 2}
+	if _, err := orchestration.Final(context.Background(), dir, m, "source-a", "data-a", interrupted, nil); err == nil {
+		t.Fatal("expected final interruption")
+	}
+	root := protocolv2.ExperimentRoot(dir, m.ID)
+	artifacts, err := filepath.Glob(filepath.Join(protocolv2.HoldoutDir(root), "checkpoints", "*.artifact"))
+	if err != nil || len(artifacts) != 1 {
+		t.Fatalf("expected one final checkpoint artifact: %v, %v", artifacts, err)
+	}
+	compressed, err := os.ReadFile(artifacts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(compressed) < 2 || compressed[0] != 0x1f || compressed[1] != 0x8b {
+		t.Fatal("final checkpoint artifact is not gzip-compressed")
+	}
+	openedBefore, err := os.ReadFile(filepath.Join(protocolv2.HoldoutDir(root), "opened.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resumed := &runner{}
+	report, err := orchestration.Final(context.Background(), dir, m, "source-a", "data-a", resumed, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.calls != len(m.Strategies)*2-1 {
+		t.Fatalf("resume ran %d units, want %d", resumed.calls, len(m.Strategies)*2-1)
+	}
+	if len(report.Decisions) != len(m.Strategies) {
+		t.Fatalf("resume produced %d decisions", len(report.Decisions))
+	}
+	openedAfter, err := os.ReadFile(filepath.Join(protocolv2.HoldoutDir(root), "opened.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(openedBefore) != string(openedAfter) {
+		t.Fatal("resume rewrote holdout opening")
+	}
+}
+
+func TestDevelopmentReviewDoesNotOpenHoldout(t *testing.T) {
+	m := fixtureManifest(t)
+	dir := t.TempDir()
+	if _, err := orchestration.Development(context.Background(), options(m, dir, &runner{}, "source-a")); err != nil {
+		t.Fatal(err)
+	}
+	review, err := orchestration.ReviewDevelopment(dir, m, "source-a", "data-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(review.Strategies) != len(m.Strategies) || len(review.Controls) == 0 {
+		t.Fatalf("incomplete review: %d strategies, %d controls", len(review.Strategies), len(review.Controls))
+	}
+	opened := filepath.Join(protocolv2.HoldoutDir(protocolv2.ExperimentRoot(dir, m.ID)), "opened.json")
+	if _, err := os.Stat(opened); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("review accessed holdout: %v", err)
 	}
 }
 

@@ -28,6 +28,7 @@ func NewResearchValidateCommand() *cli.Command {
 			prepareResearchCommand(),
 			developmentResearchCommand(),
 			freezeResearchCommand(),
+			reviewResearchCommand(),
 			finalResearchCommand(),
 		},
 	}
@@ -166,9 +167,14 @@ func freezeResearchCommand() *cli.Command {
 }
 
 func finalResearchCommand() *cli.Command {
+	flags := phaseFlags(true)
+	flags = append(flags,
+		&cli.BoolFlag{Name: "authorize-holdout", Usage: "confirm the one-time holdout opening"},
+		&cli.BoolFlag{Name: "orchestration-upgrade", Usage: "allow a verified orchestration-only upgrade over the frozen evaluator"},
+	)
 	return &cli.Command{
 		Name: "final", Usage: "explicitly open the frozen holdout once",
-		Flags: append(phaseFlags(true), &cli.BoolFlag{Name: "authorize-holdout", Usage: "confirm the one-time holdout opening"}),
+		Flags: flags,
 		Action: func(c *cli.Context) error {
 			if !c.Bool("authorize-holdout") {
 				return fmt.Errorf("final requires --authorize-holdout")
@@ -184,7 +190,17 @@ func finalResearchCommand() *cli.Command {
 			if store == nil {
 				return fmt.Errorf("final requires --candle-dir to verify holdout eligibility and fingerprints")
 			}
-			report, err := orchestration.Final(c.Context, c.String("output"), m, sourceHash, dataHash, runner, store)
+			report, err := orchestration.Final(c.Context, c.String("output"), m, sourceHash, dataHash, runner, store, func(p orchestration.Progress) {
+				if p.Err != nil {
+					_, _ = fmt.Fprintf(c.App.ErrWriter, "failed %s: %v\n", p.Unit.Key(), p.Err)
+					return
+				}
+				state := "completed"
+				if p.Reused {
+					state = "reused"
+				}
+				_, _ = fmt.Fprintf(c.App.Writer, "%s %d complete, %d remaining: %s\n", state, p.Completed, p.Remaining, p.Unit.Key())
+			})
 			if err != nil {
 				return err
 			}
@@ -192,6 +208,32 @@ func finalResearchCommand() *cli.Command {
 			for _, decision := range report.Decisions {
 				_, _ = fmt.Fprintf(c.App.Writer, "%s %s: %s\n", decision.Strategy, decision.Candidate, decision.Decision.Status)
 			}
+			return nil
+		},
+	}
+}
+
+func reviewResearchCommand() *cli.Command {
+	flags := phaseFlags(false)
+	flags = append(flags, &cli.BoolFlag{
+		Name: "existing-development", Usage: "review checksum-valid existing development without requiring the current Git revision",
+	})
+	return &cli.Command{
+		Name: "review", Usage: "write a compact pre-holdout development review",
+		Flags: flags,
+		Action: func(c *cli.Context) error {
+			m, sourceHash, dataHash, _, err := loadPhase(c)
+			if err != nil {
+				return err
+			}
+			review, err := orchestration.ReviewDevelopment(c.String("output"), m, sourceHash, dataHash)
+			if err != nil {
+				return err
+			}
+			for _, strategy := range review.Strategies {
+				_, _ = fmt.Fprintf(c.App.Writer, "%s %s: irreversible=%v pre-holdout-flags=%v\n", strategy.Strategy, strategy.FrozenCandidate, strategy.IrreversibleFailedGates, strategy.PreHoldoutGateFlags)
+			}
+			_, _ = fmt.Fprintf(c.App.Writer, "development review complete: %s/protocol-v2/%s/reports/development-review.json\n", c.String("output"), m.ID)
 			return nil
 		},
 	}
@@ -215,15 +257,25 @@ func loadPhase(c *cli.Context) (manifest.Manifest, protocolv2.SHA256Hex, protoco
 		return manifest.Manifest{}, "", "", nil, err
 	}
 	existingDevelopment := c.Bool("existing-development")
-	if !existingDevelopment && (actualSource.GitRevision != m.Source.GitRevision || actualSource.Dirty != m.Source.Dirty) {
+	orchestrationUpgrade := c.Bool("orchestration-upgrade")
+	if orchestrationUpgrade {
+		if actualSource.Dirty {
+			return manifest.Manifest{}, "", "", nil, fmt.Errorf("orchestration upgrade requires a clean worktree")
+		}
+		if err := manifest.VerifyOrchestrationOnlyUpgrade(c.String("workdir"), m.Source.GitRevision); err != nil {
+			return manifest.Manifest{}, "", "", nil, err
+		}
+	}
+	useFrozenRevision := existingDevelopment || orchestrationUpgrade
+	if !useFrozenRevision && (actualSource.GitRevision != m.Source.GitRevision || actualSource.Dirty != m.Source.Dirty) {
 		return manifest.Manifest{}, "", "", nil, fmt.Errorf("source revision differs from manifest: current %s dirty=%t, manifest %s dirty=%t", actualSource.GitRevision, actualSource.Dirty, m.Source.GitRevision, m.Source.Dirty)
 	}
-	if !existingDevelopment && actualSource.Dirty {
+	if !useFrozenRevision && actualSource.Dirty {
 		return manifest.Manifest{}, "", "", nil, fmt.Errorf("research phases require a clean worktree; commit the exact source and regenerate the manifest")
 	}
 	sourceHash, dataHash := protocolv2.SHA256Hex(c.String("source-hash")), protocolv2.SHA256Hex(c.String("data-hash"))
 	verifiedRevision := actualSource.GitRevision
-	if existingDevelopment {
+	if useFrozenRevision {
 		verifiedRevision = m.Source.GitRevision
 	}
 	derivedSourceHash := hashText(verifiedRevision)

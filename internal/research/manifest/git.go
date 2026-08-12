@@ -29,6 +29,45 @@ func GitRevision(dir string) (SourceRevision, error) {
 	return SourceRevision{GitRevision: strings.TrimSpace(rev), Dirty: dirty}, nil
 }
 
+// VerifyOrchestrationOnlyUpgrade allows operational recovery code to run over
+// a frozen evaluator only when every committed change is outside strategies,
+// execution, metrics, candidates, controls, and data loading.
+func VerifyOrchestrationOnlyUpgrade(dir, frozenRevision string) error {
+	if strings.TrimSpace(frozenRevision) == "" {
+		return fmt.Errorf("manifest: frozen revision is required")
+	}
+	if _, err := gitOutput(dir, "merge-base", "--is-ancestor", frozenRevision, "HEAD"); err != nil {
+		return fmt.Errorf("manifest: frozen revision is not an ancestor of HEAD: %w", err)
+	}
+	changed, err := gitOutput(dir, "diff", "--name-only", frozenRevision+"..HEAD")
+	if err != nil {
+		return err
+	}
+	for _, path := range strings.Fields(changed) {
+		if orchestrationUpgradePath(path) {
+			continue
+		}
+		return fmt.Errorf("manifest: orchestration-only upgrade changes evaluator-relevant path %q", path)
+	}
+	return nil
+}
+
+func orchestrationUpgradePath(path string) bool {
+	switch path {
+	case "internal/presentation/command/research_validate.go",
+		"internal/research/manifest/git.go",
+		"internal/research/manifest/git_test.go",
+		"internal/research/orchestration/orchestration.go",
+		"internal/research/orchestration/orchestration_test.go",
+		"internal/research/orchestration/review.go",
+		"internal/research/orchestration/review_test.go",
+		"scripts/README.md",
+		"scripts/run_research_v2.sh":
+		return true
+	}
+	return strings.HasPrefix(path, "docs/") || strings.HasPrefix(path, "openspec/")
+}
+
 func gitOutput(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
