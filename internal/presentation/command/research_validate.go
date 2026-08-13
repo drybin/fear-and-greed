@@ -44,6 +44,7 @@ func prepareResearchCommand() *cli.Command {
 			&cli.StringFlag{Name: "manifest", Required: true, Usage: "canonical manifest output path"},
 			&cli.StringFlag{Name: "cutoff", Required: true, Usage: "exclusive UTC cutoff date (YYYY-MM-DD)"},
 			&cli.StringFlag{Name: "workdir", Value: ".", Usage: "clean repository root"},
+			&cli.StringFlag{Name: "suite", Value: "core-v2", Usage: "research suite: core-v2 or research-v3"},
 			&cli.Uint64Flag{Name: "seed", Value: 42, Usage: "frozen random-control seed"},
 		},
 		Action: func(c *cli.Context) error {
@@ -60,7 +61,7 @@ func prepareResearchCommand() *cli.Command {
 			}
 			m, err := orchestration.PrepareManifest(orchestration.PrepareManifestOptions{
 				SymbolsFile: c.String("symbols"), CandleDir: c.String("candle-dir"), OutputPath: c.String("manifest"),
-				Cutoff: cutoff, Source: source, Seed: c.Uint64("seed"),
+				Cutoff: cutoff, Source: source, Seed: c.Uint64("seed"), Suite: c.String("suite"),
 			})
 			if err != nil {
 				return err

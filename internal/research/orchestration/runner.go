@@ -88,7 +88,7 @@ type InProcessRunner struct {
 	Adapters map[string]candidates.Adapter
 }
 
-// NewInProcessRunner builds adapters from the closed core candidate set.
+// NewInProcessRunner builds adapters from one closed research suite.
 func NewInProcessRunner(m manifest.Manifest, candles CandleStore) (*InProcessRunner, error) {
 	if candles == nil {
 		return nil, fmt.Errorf("orchestration: candle store is required")
@@ -96,11 +96,11 @@ func NewInProcessRunner(m manifest.Manifest, candles CandleStore) (*InProcessRun
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
-	if err := manifest.ValidateCoreStrategyCodes(m.Strategies); err != nil {
+	if err := manifest.ValidateSupportedStrategyCodes(m.Strategies); err != nil {
 		return nil, err
 	}
 	byCode := map[protocolv2.StrategyCode]candidates.Adapter{}
-	for _, adapter := range candidates.Core() {
+	for _, adapter := range candidates.All() {
 		byCode[adapter.Metadata().Ref.Code] = adapter
 	}
 	adapters := map[string]candidates.Adapter{}
@@ -316,7 +316,7 @@ func PreflightDevelopment(m manifest.Manifest, outputDir string, candles CandleS
 	if err := m.Validate(); err != nil {
 		return "", err
 	}
-	if err := manifest.ValidateCoreStrategyCodes(m.Strategies); err != nil {
+	if err := manifest.ValidateSupportedStrategyCodes(m.Strategies); err != nil {
 		return "", err
 	}
 	if candles == nil {

@@ -222,7 +222,7 @@ func preflight(options DevelopmentOptions) error {
 	if err := options.Manifest.Validate(); err != nil {
 		return err
 	}
-	if err := manifest.ValidateCoreStrategyCodes(options.Manifest.Strategies); err != nil {
+	if err := manifest.ValidateSupportedStrategyCodes(options.Manifest.Strategies); err != nil {
 		return err
 	}
 	if options.Manifest.ID == "" || options.Manifest.Hash == "" || options.SourceHash == "" || options.DataHash == "" {

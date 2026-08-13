@@ -20,3 +20,14 @@ func TestValidateCoreStrategyCodesRejectsDeferredStrategies(t *testing.T) {
 	strategies[3].Ref.Code = "mean-reversion-v1"
 	require.ErrorContains(t, manifest.ValidateCoreStrategyCodes(strategies), "outside core validation scope")
 }
+
+func TestValidateResearchV3StrategyCodesRejectsMixedSuite(t *testing.T) {
+	v3 := []manifest.Strategy{
+		{Ref: protocolv2.StrategyRef{Code: "volatility-compression-breakout-v2", Version: "v2.0.0"}},
+		{Ref: protocolv2.StrategyRef{Code: "mean-reversion-v1", Version: "v1.0.0"}},
+	}
+	require.NoError(t, manifest.ValidateResearchV3StrategyCodes(v3))
+	require.NoError(t, manifest.ValidateSupportedStrategyCodes(v3))
+	v3[1].Ref.Code = "breakout-retest-long-v2"
+	require.Error(t, manifest.ValidateSupportedStrategyCodes(v3))
+}

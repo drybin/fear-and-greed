@@ -13,6 +13,7 @@ CUTOFF="${CUTOFF:-2026-08-01}"
 SINCE="${SINCE:-2024-07-01}"
 UNTIL="${UNTIL:-2026-07-31}"
 SEED="${SEED:-42}"
+SUITE="${SUITE:-core-v2}"
 DATA_DIR="${DATA_DIR:-$ROOT/data/research-v2}"
 SYMBOLS_FILE="${SYMBOLS_FILE:-$ROOT/scripts/symbols_top50.txt}"
 AUTHORIZE_HOLDOUT="${AUTHORIZE_HOLDOUT:-0}"
@@ -53,6 +54,7 @@ run_logged() {
 }
 
 echo "Protocol-v2 run: cutoff=$CUTOFF revision=$REVISION"
+echo "Research suite: $SUITE"
 echo "Run directory: $RUN_DIR"
 
 if [[ "$FINAL_ONLY" != "1" && "$SKIP_FETCH" != "1" ]]; then
@@ -86,6 +88,7 @@ if [[ "$FINAL_ONLY" != "1" ]]; then
     --manifest "$MANIFEST" \
     --cutoff "$CUTOFF" \
     --seed "$SEED" \
+    --suite "$SUITE" \
     --workdir "$ROOT"
 
   run_logged "$BIN" research-validate development \

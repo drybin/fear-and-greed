@@ -79,3 +79,15 @@ func TestLegacyEntryFixturesMapToCloseConfirmedSignals(t *testing.T) {
 		})
 	}
 }
+
+func TestResearchV3AdaptersHaveBoundedCommonContract(t *testing.T) {
+	adapters := ResearchV3()
+	require.Len(t, adapters, 2)
+	for _, adapter := range adapters {
+		metadata := adapter.Metadata()
+		require.Equal(t, protocolv2.Timeframe("1h"), metadata.Timeframe)
+		require.Greater(t, metadata.WarmupBars, 0)
+		require.Len(t, adapter.Grid(), 4)
+		require.NoError(t, metadata.Ref.Validate())
+	}
+}

@@ -1,8 +1,14 @@
 package orchestration
 
 import (
+	"bufio"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -109,11 +115,11 @@ func ReviewDevelopment(outputDir string, m manifest.Manifest, sourceHash, dataHa
 		if checkpoint.Unit.Control == "" {
 			continue
 		}
-		result, err := readCheckpointArtifact(root, checkpoint)
+		summary, err := readCheckpointEvidence(root, checkpoint, m.Risk.InitialEquity, nil)
 		if err != nil {
 			return DevelopmentReview{}, err
 		}
-		review.Controls = append(review.Controls, summarizeUnitEvidence(result, m.Risk.InitialEquity))
+		review.Controls = append(review.Controls, summary)
 		releaseResearchMemory()
 	}
 	sort.Slice(review.Controls, func(i, j int) bool { return review.Controls[i].Unit.Key() < review.Controls[j].Unit.Key() })
@@ -150,11 +156,10 @@ func reviewStrategy(root string, m manifest.Manifest, development DevelopmentRep
 		if unit.Strategy.String() != candidate.Strategy.String() || unit.Control != "" || !strings.HasSuffix(string(unit.Fold), "-test") {
 			continue
 		}
-		result, err := readCheckpointArtifact(root, checkpoint)
+		summary, err := readCheckpointEvidence(root, checkpoint, m.Risk.InitialEquity, baseAggregate)
 		if err != nil {
 			return DevelopmentStrategyReview{}, err
 		}
-		summary := summarizeUnitEvidence(result, m.Risk.InitialEquity)
 		fold := protocolv2.FoldID(strings.TrimSuffix(string(unit.Fold), "-test"))
 		item := byFold[fold]
 		if item == nil {
@@ -164,7 +169,6 @@ func reviewStrategy(root string, m manifest.Manifest, development DevelopmentRep
 		switch unit.Cost {
 		case m.Execution.ID:
 			item.Base = summary
-			baseAggregate.add(result, m.Risk.InitialEquity)
 			if summary.NetPnL > 0 {
 				positiveFolds++
 			}
@@ -275,25 +279,29 @@ func newEvidenceAccumulator() *evidenceAccumulator {
 
 func (a *evidenceAccumulator) add(result UnitResult, initialEquity float64) {
 	for _, artifact := range result.Symbols {
-		a.symbols[artifact.Symbol] = struct{}{}
-		pnl := artifact.FinalEquity - initialEquity
-		a.netPnL += pnl
-		a.contributions[artifact.Symbol] += pnl
-		if drawdown := artifact.Metrics.MaxDrawdown * 100; drawdown > a.drawdowns[artifact.Symbol] {
-			a.drawdowns[artifact.Symbol] = drawdown
+		a.addSymbolEvidence(artifact.Symbol, artifact.Metrics.MaxDrawdown, artifact.FinalEquity, artifact.Trades, initialEquity)
+	}
+}
+
+func (a *evidenceAccumulator) addSymbolEvidence(symbol protocolv2.Symbol, maxDrawdown, finalEquity float64, trades []execution.TradeState, initialEquity float64) {
+	a.symbols[symbol] = struct{}{}
+	pnl := finalEquity - initialEquity
+	a.netPnL += pnl
+	a.contributions[symbol] += pnl
+	if drawdown := maxDrawdown * 100; drawdown > a.drawdowns[symbol] {
+		a.drawdowns[symbol] = drawdown
+	}
+	for _, trade := range trades {
+		if trade.Status != execution.TradeClosed {
+			continue
 		}
-		for _, trade := range artifact.Trades {
-			if trade.Status != execution.TradeClosed {
-				continue
-			}
-			tradePnL := tradeNetPnL(trade)
-			a.tradePnL += tradePnL
-			a.closedTrades++
-			if tradePnL > 0 {
-				a.wins += tradePnL
-			} else if tradePnL < 0 {
-				a.losses -= tradePnL
-			}
+		tradePnL := tradeNetPnL(trade)
+		a.tradePnL += tradePnL
+		a.closedTrades++
+		if tradePnL > 0 {
+			a.wins += tradePnL
+		} else if tradePnL < 0 {
+			a.losses -= tradePnL
 		}
 	}
 }
@@ -333,14 +341,154 @@ func (a *evidenceAccumulator) summary() evidenceSummary {
 	}
 }
 
-func summarizeUnitEvidence(result UnitResult, initialEquity float64) UnitEvidenceSummary {
+// reviewSymbolArtifact contains precisely the fields required for a
+// development decision. The decoder discards equity, audit, and rejection
+// arrays instead of retaining an entire checkpoint in memory.
+type reviewSymbolArtifact struct {
+	Symbol      protocolv2.Symbol      `json:"symbol"`
+	Metrics     reviewArtifactMetrics  `json:"metrics"`
+	FinalEquity float64                `json:"final_equity"`
+	Trades      []execution.TradeState `json:"trades"`
+}
+
+type reviewArtifactMetrics struct {
+	MaxDrawdown float64 `json:"max_drawdown"`
+}
+
+// readCheckpointEvidence streams a checksum-protected checkpoint and retains
+// only the compact data needed by review. Checkpoints can contain long equity
+// curves and audit logs, so decoding UnitResult would otherwise retain all of
+// them at once for every unit.
+func readCheckpointEvidence(root string, checkpoint Checkpoint, initialEquity float64, aggregate *evidenceAccumulator) (UnitEvidenceSummary, error) {
+	path := filepath.Join(protocolv2.CheckpointDir(root), checkpoint.Unit.Key()+".json.artifact")
+	file, err := os.Open(path)
+	if err != nil {
+		return UnitEvidenceSummary{}, err
+	}
+	defer func() { _ = file.Close() }()
+
+	hasher := sha256.New()
+	buffered := bufio.NewReader(io.TeeReader(file, hasher))
+	header, err := buffered.Peek(2)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return UnitEvidenceSummary{}, err
+	}
+
+	var source io.Reader = buffered
+	var compressed *gzip.Reader
+	if len(header) == 2 && header[0] == 0x1f && header[1] == 0x8b {
+		compressed, err = gzip.NewReader(buffered)
+		if err != nil {
+			return UnitEvidenceSummary{}, fmt.Errorf("orchestration: open compressed artifact: %w", err)
+		}
+		source = compressed
+	}
+
+	decoder := json.NewDecoder(source)
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return UnitEvidenceSummary{}, fmt.Errorf("orchestration: invalid checkpoint artifact JSON")
+	}
+
+	var unit Unit
 	accumulator := newEvidenceAccumulator()
-	accumulator.add(result, initialEquity)
+	for decoder.More() {
+		field, err := decoder.Token()
+		if err != nil {
+			return UnitEvidenceSummary{}, fmt.Errorf("orchestration: read checkpoint artifact: %w", err)
+		}
+		name, ok := field.(string)
+		if !ok {
+			return UnitEvidenceSummary{}, fmt.Errorf("orchestration: invalid checkpoint artifact field")
+		}
+		switch name {
+		case "unit":
+			if err := decoder.Decode(&unit); err != nil {
+				return UnitEvidenceSummary{}, fmt.Errorf("orchestration: decode checkpoint unit: %w", err)
+			}
+		case "symbols":
+			if err := decodeReviewSymbols(decoder, accumulator, aggregate, initialEquity); err != nil {
+				return UnitEvidenceSummary{}, err
+			}
+		default:
+			if err := discardJSONValue(decoder); err != nil {
+				return UnitEvidenceSummary{}, err
+			}
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil || end != json.Delim('}') {
+		return UnitEvidenceSummary{}, fmt.Errorf("orchestration: invalid checkpoint artifact JSON")
+	}
+	if _, err := io.Copy(io.Discard, source); err != nil {
+		return UnitEvidenceSummary{}, fmt.Errorf("orchestration: verify checkpoint payload: %w", err)
+	}
+	if compressed != nil {
+		if err := compressed.Close(); err != nil {
+			return UnitEvidenceSummary{}, fmt.Errorf("orchestration: close checkpoint decompressor: %w", err)
+		}
+	}
+	if _, err := io.Copy(io.Discard, buffered); err != nil {
+		return UnitEvidenceSummary{}, fmt.Errorf("orchestration: finish checkpoint checksum: %w", err)
+	}
+	actual := protocolv2.SHA256Hex(hex.EncodeToString(hasher.Sum(nil)))
+	if actual != checkpoint.ArtifactSHA256 {
+		return UnitEvidenceSummary{}, fmt.Errorf("artifact checksum mismatch")
+	}
+	if unit.Key() != checkpoint.Unit.Key() {
+		return UnitEvidenceSummary{}, fmt.Errorf("orchestration: invalid checkpoint artifact for %s", checkpoint.Unit.Key())
+	}
+
 	summary := accumulator.summary()
 	return UnitEvidenceSummary{
-		Unit: result.Unit, NetPnL: summary.NetPnL, ClosedTrades: summary.ClosedTrades,
+		Unit: unit, NetPnL: summary.NetPnL, ClosedTrades: summary.ClosedTrades,
 		EligibleSymbols: summary.EligibleSymbols, PositiveSymbols: summary.PositiveSymbols,
 		ProfitFactor: summary.ProfitFactor, Expectancy: summary.Expectancy,
 		MedianDrawdownPercent: summary.MedianDrawdownPercent, MaxContributionPct: summary.MaxContributionPct,
+	}, nil
+}
+
+func decodeReviewSymbols(decoder *json.Decoder, accumulator, aggregate *evidenceAccumulator, initialEquity float64) error {
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('[') {
+		return fmt.Errorf("orchestration: checkpoint symbols must be an array")
 	}
+	for decoder.More() {
+		var artifact reviewSymbolArtifact
+		if err := decoder.Decode(&artifact); err != nil {
+			return fmt.Errorf("orchestration: decode checkpoint symbol evidence: %w", err)
+		}
+		accumulator.addSymbolEvidence(artifact.Symbol, artifact.Metrics.MaxDrawdown, artifact.FinalEquity, artifact.Trades, initialEquity)
+		if aggregate != nil {
+			aggregate.addSymbolEvidence(artifact.Symbol, artifact.Metrics.MaxDrawdown, artifact.FinalEquity, artifact.Trades, initialEquity)
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil || end != json.Delim(']') {
+		return fmt.Errorf("orchestration: invalid checkpoint symbols")
+	}
+	return nil
+}
+
+func discardJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	for decoder.More() {
+		if delim == '{' {
+			if _, err := decoder.Token(); err != nil {
+				return err
+			}
+		}
+		if err := discardJSONValue(decoder); err != nil {
+			return err
+		}
+	}
+	_, err = decoder.Token()
+	return err
 }

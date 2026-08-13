@@ -24,20 +24,44 @@ var coreStrategyCodes = map[protocolv2.StrategyCode]struct{}{
 	"breakout-retest-long-v2":            {},
 }
 
+var researchV3StrategyCodes = map[protocolv2.StrategyCode]struct{}{
+	"volatility-compression-breakout-v2": {},
+	"mean-reversion-v1":                  {},
+}
+
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation
 // scope after normal manifest validation. It rejects strategies reserved for
 // follow-up research changes without restricting non-core manifest consumers.
 func ValidateCoreStrategyCodes(strategies []Strategy) error {
-	if len(strategies) != len(coreStrategyCodes) {
-		return fmt.Errorf("manifest: core validation requires exactly %d strategies", len(coreStrategyCodes))
+	return validateStrategySuite("core validation", strategies, coreStrategyCodes)
+}
+
+// ValidateResearchV3StrategyCodes keeps the next experiment isolated from the
+// completed core study. A manifest contains exactly one approved suite.
+func ValidateResearchV3StrategyCodes(strategies []Strategy) error {
+	return validateStrategySuite("research-v3", strategies, researchV3StrategyCodes)
+}
+
+// ValidateSupportedStrategyCodes accepts one complete protocol suite, never a
+// mixture of historical core and new research candidates.
+func ValidateSupportedStrategyCodes(strategies []Strategy) error {
+	if err := ValidateCoreStrategyCodes(strategies); err == nil {
+		return nil
+	}
+	return ValidateResearchV3StrategyCodes(strategies)
+}
+
+func validateStrategySuite(name string, strategies []Strategy, allowed map[protocolv2.StrategyCode]struct{}) error {
+	if len(strategies) != len(allowed) {
+		return fmt.Errorf("manifest: %s requires exactly %d strategies", name, len(allowed))
 	}
 	seen := make(map[protocolv2.StrategyCode]struct{}, len(strategies))
 	for _, strategy := range strategies {
-		if _, allowed := coreStrategyCodes[strategy.Ref.Code]; !allowed {
-			return fmt.Errorf("manifest: strategy %q is outside core validation scope", strategy.Ref.Code)
+		if _, ok := allowed[strategy.Ref.Code]; !ok {
+			return fmt.Errorf("manifest: strategy %q is outside %s scope", strategy.Ref.Code, name)
 		}
 		if _, duplicate := seen[strategy.Ref.Code]; duplicate {
-			return fmt.Errorf("manifest: duplicate core strategy code %q", strategy.Ref.Code)
+			return fmt.Errorf("manifest: duplicate %s strategy code %q", name, strategy.Ref.Code)
 		}
 		seen[strategy.Ref.Code] = struct{}{}
 	}

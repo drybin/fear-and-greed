@@ -20,6 +20,7 @@ type PrepareManifestOptions struct {
 	Cutoff      time.Time
 	Source      manifest.SourceRevision
 	Seed        uint64
+	Suite       string
 }
 
 // PrepareManifest fingerprints the frozen cohort and creates the immutable
@@ -61,8 +62,12 @@ func PrepareManifest(options PrepareManifestOptions) (manifest.Manifest, error) 
 		symbols = append(symbols, manifest.SymbolSnapshot{Symbol: symbol, CandleSHA256: inventory.SHA256})
 	}
 
-	strategies := make([]manifest.Strategy, 0, len(candidates.Core()))
-	for _, adapter := range candidates.Core() {
+	adapters, err := researchSuite(options.Suite)
+	if err != nil {
+		return manifest.Manifest{}, err
+	}
+	strategies := make([]manifest.Strategy, 0, len(adapters))
+	for _, adapter := range adapters {
 		metadata := adapter.Metadata()
 		grid := make([]manifest.ParameterCandidate, 0, len(adapter.Grid()))
 		for _, candidate := range adapter.Grid() {
@@ -101,11 +106,22 @@ func PrepareManifest(options PrepareManifestOptions) (manifest.Manifest, error) 
 	if err := m.Freeze(); err != nil {
 		return manifest.Manifest{}, err
 	}
-	if err := manifest.ValidateCoreStrategyCodes(m.Strategies); err != nil {
+	if err := manifest.ValidateSupportedStrategyCodes(m.Strategies); err != nil {
 		return manifest.Manifest{}, err
 	}
 	if err := manifest.WriteFile(options.OutputPath, m); err != nil {
 		return manifest.Manifest{}, err
 	}
 	return m, nil
+}
+
+func researchSuite(name string) ([]candidates.Adapter, error) {
+	switch name {
+	case "", "core-v2":
+		return candidates.Core(), nil
+	case "research-v3":
+		return candidates.ResearchV3(), nil
+	default:
+		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
+	}
 }

@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	FibPullbackTrendCode              protocolv2.StrategyCode = "fib-pullback-trend-v1"
-	NR7TrendBreakoutCode              protocolv2.StrategyCode = "nr7-trend-breakout-v1"
-	VolatilityCompressionBreakoutCode protocolv2.StrategyCode = "volatility-compression-breakout-v1"
-	BreakoutRetestLongCode            protocolv2.StrategyCode = "breakout-retest-long-v2"
+	FibPullbackTrendCode                protocolv2.StrategyCode = "fib-pullback-trend-v1"
+	NR7TrendBreakoutCode                protocolv2.StrategyCode = "nr7-trend-breakout-v1"
+	VolatilityCompressionBreakoutCode   protocolv2.StrategyCode = "volatility-compression-breakout-v1"
+	BreakoutRetestLongCode              protocolv2.StrategyCode = "breakout-retest-long-v2"
+	VolatilityCompressionBreakoutV2Code protocolv2.StrategyCode = "volatility-compression-breakout-v2"
+	MeanReversionCode                   protocolv2.StrategyCode = "mean-reversion-v1"
 )
 
 // ParameterCandidate is a frozen adapter grid point. Orchestration selects
@@ -114,6 +116,17 @@ func Core() []Adapter {
 	return []Adapter{fib(), nr7(), vcb(), breakoutRetest()}
 }
 
+// ResearchV3 is an independent, deliberately small next-experiment suite.
+// It does not silently alter the core-v2 candidate set or its frozen results.
+func ResearchV3() []Adapter {
+	return []Adapter{vcbV2(), meanReversion()}
+}
+
+// All returns every adapter that can be evaluated by the in-process runner.
+func All() []Adapter {
+	return append(append([]Adapter{}, Core()...), ResearchV3()...)
+}
+
 // RegisterCore installs exactly the four scope-approved adapters.
 func RegisterCore(registry *execution.Registry) error {
 	if registry == nil {
@@ -125,6 +138,48 @@ func RegisterCore(registry *execution.Registry) error {
 		}
 	}
 	return nil
+}
+
+func vcbV2() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "vcb2-c65-v12", Values: map[string]any{"compression_factor": 0.65, "volume_multiplier": 1.2}},
+		{ID: "vcb2-c65-v15", Values: map[string]any{"compression_factor": 0.65, "volume_multiplier": 1.5}},
+		{ID: "vcb2-c75-v12", Values: map[string]any{"compression_factor": 0.75, "volume_multiplier": 1.2}},
+		{ID: "vcb2-c75-v15", Values: map[string]any{"compression_factor": 0.75, "volume_multiplier": 1.5}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(VolatilityCompressionBreakoutV2Code, "v2.0.0"), Name: "Volatility Compression Breakout v2", Timeframe: "1h", WarmupBars: 240, Description: "1h prior-range breakout after ATR compression, volume confirmation, and rising EMA200 trend."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.ResearchV3VolatilityCompressionSignals(candles, strategy.VolatilityCompressionBreakoutV2Params{CompressionFactor: candidate.Values["compression_factor"].(float64), VolumeMultiplier: candidate.Values["volume_multiplier"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown vcb v2 candidate %q", id)
+		},
+	}
+}
+
+func meanReversion() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "mr-rsi25-stop12", Values: map[string]any{"oversold_rsi": 25.0, "stop_atr": 1.2}},
+		{ID: "mr-rsi25-stop16", Values: map[string]any{"oversold_rsi": 25.0, "stop_atr": 1.6}},
+		{ID: "mr-rsi30-stop12", Values: map[string]any{"oversold_rsi": 30.0, "stop_atr": 1.2}},
+		{ID: "mr-rsi30-stop16", Values: map[string]any{"oversold_rsi": 30.0, "stop_atr": 1.6}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(MeanReversionCode, "v1.0.0"), Name: "Trend Mean Reversion v1", Timeframe: "1h", WarmupBars: 240, Description: "1h RSI recovery after oversold pullback within a rising EMA200 trend."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.ResearchV3MeanReversionSignals(candles, strategy.MeanReversionV1Params{OversoldRSI: candidate.Values["oversold_rsi"].(float64), StopATR: candidate.Values["stop_atr"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown mean-reversion candidate %q", id)
+		},
+	}
 }
 
 func fib() Adapter {
