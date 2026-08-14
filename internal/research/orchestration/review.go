@@ -156,7 +156,11 @@ func reviewStrategy(root string, m manifest.Manifest, development DevelopmentRep
 		if unit.Strategy.String() != candidate.Strategy.String() || unit.Control != "" || !strings.HasSuffix(string(unit.Fold), "-test") {
 			continue
 		}
-		summary, err := readCheckpointEvidence(root, checkpoint, m.Risk.InitialEquity, baseAggregate)
+		var aggregate *evidenceAccumulator
+		if unit.Cost == m.Execution.ID {
+			aggregate = baseAggregate
+		}
+		summary, err := readCheckpointEvidence(root, checkpoint, m.Risk.InitialEquity, aggregate)
 		if err != nil {
 			return DevelopmentStrategyReview{}, err
 		}

@@ -204,6 +204,15 @@ func TestDevelopmentReviewDoesNotOpenHoldout(t *testing.T) {
 	if len(review.Strategies) != len(m.Strategies) || len(review.Controls) == 0 {
 		t.Fatalf("incomplete review: %d strategies, %d controls", len(review.Strategies), len(review.Controls))
 	}
+	for _, strategy := range review.Strategies {
+		baseTrades := 0
+		for _, fold := range strategy.Folds {
+			baseTrades += fold.Base.ClosedTrades
+		}
+		if strategy.Aggregate.AggregateTrades != baseTrades {
+			t.Fatalf("review aggregate includes non-base trades for %s: got %d, want %d", strategy.Strategy, strategy.Aggregate.AggregateTrades, baseTrades)
+		}
+	}
 	opened := filepath.Join(protocolv2.HoldoutDir(protocolv2.ExperimentRoot(dir, m.ID)), "opened.json")
 	if _, err := os.Stat(opened); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("review accessed holdout: %v", err)
