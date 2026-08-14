@@ -259,6 +259,10 @@ func (a *account) exitsAt(c Candle, barIndex int) {
 	if p == nil {
 		return
 	}
+	if !p.signal.TimeExitAt.IsZero() && !c.Time.Before(p.signal.TimeExitAt) {
+		a.exit(c, c.Open, p.state.RemainingQuantity, ExitReasonTime)
+		return
+	}
 	if c.Open <= p.state.Stop {
 		a.exit(c, c.Open, p.state.RemainingQuantity, p.stopReason())
 		return
@@ -269,6 +273,10 @@ func (a *account) exitsAt(c Candle, barIndex int) {
 	}
 	targets := sortedTargets(p.signal.Targets)
 	if len(targets) > 0 && !p.tp1Complete && c.High >= targets[0].Price {
+		if p.signal.ExitAllAtTP1 {
+			a.exit(c, targets[0].Price, p.state.RemainingQuantity, ExitReasonTarget)
+			return
+		}
 		qty := protocolv2.RoundQuantity(p.state.InitialQuantity / 2)
 		if qty <= 0 || qty >= p.state.RemainingQuantity {
 			a.exit(c, targets[0].Price, p.state.RemainingQuantity, ExitReasonTarget)

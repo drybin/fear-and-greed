@@ -288,6 +288,15 @@ func (a *evidenceAccumulator) add(result UnitResult, initialEquity float64) {
 }
 
 func (a *evidenceAccumulator) addSymbolEvidence(symbol protocolv2.Symbol, maxDrawdown, finalEquity float64, trades []execution.TradeState, initialEquity float64) {
+	a.addSymbolMetrics(symbol, maxDrawdown, finalEquity, initialEquity)
+	for _, trade := range trades {
+		if trade.Status == execution.TradeClosed {
+			a.addClosedTradeNetPnL(tradeNetPnL(trade))
+		}
+	}
+}
+
+func (a *evidenceAccumulator) addSymbolMetrics(symbol protocolv2.Symbol, maxDrawdown, finalEquity, initialEquity float64) {
 	a.symbols[symbol] = struct{}{}
 	pnl := finalEquity - initialEquity
 	a.netPnL += pnl
@@ -295,18 +304,15 @@ func (a *evidenceAccumulator) addSymbolEvidence(symbol protocolv2.Symbol, maxDra
 	if drawdown := maxDrawdown * 100; drawdown > a.drawdowns[symbol] {
 		a.drawdowns[symbol] = drawdown
 	}
-	for _, trade := range trades {
-		if trade.Status != execution.TradeClosed {
-			continue
-		}
-		tradePnL := tradeNetPnL(trade)
-		a.tradePnL += tradePnL
-		a.closedTrades++
-		if tradePnL > 0 {
-			a.wins += tradePnL
-		} else if tradePnL < 0 {
-			a.losses -= tradePnL
-		}
+}
+
+func (a *evidenceAccumulator) addClosedTradeNetPnL(tradePnL float64) {
+	a.tradePnL += tradePnL
+	a.closedTrades++
+	if tradePnL > 0 {
+		a.wins += tradePnL
+	} else if tradePnL < 0 {
+		a.losses -= tradePnL
 	}
 }
 
@@ -345,18 +351,38 @@ func (a *evidenceAccumulator) summary() evidenceSummary {
 	}
 }
 
-// reviewSymbolArtifact contains precisely the fields required for a
-// development decision. The decoder discards equity, audit, and rejection
-// arrays instead of retaining an entire checkpoint in memory.
-type reviewSymbolArtifact struct {
-	Symbol      protocolv2.Symbol      `json:"symbol"`
-	Metrics     reviewArtifactMetrics  `json:"metrics"`
-	FinalEquity float64                `json:"final_equity"`
-	Trades      []execution.TradeState `json:"trades"`
-}
-
 type reviewArtifactMetrics struct {
 	MaxDrawdown float64 `json:"max_drawdown"`
+}
+
+// reviewTrade only retains price and quantity fields required for PnL. The
+// execution audit embedded in full fills can be large and is not evidence used
+// by development gates.
+type reviewTrade struct {
+	Status       execution.TradeStatus `json:"status"`
+	Entry        reviewFill            `json:"entry"`
+	PartialExits []reviewFill          `json:"partial_exits"`
+	FinalExit    *reviewFill           `json:"final_exit"`
+}
+
+type reviewFill struct {
+	Price      float64 `json:"price"`
+	Quantity   float64 `json:"quantity"`
+	Commission float64 `json:"commission"`
+}
+
+func (t reviewTrade) netPnL() float64 {
+	entry := t.Entry.Price*t.Entry.Quantity + t.Entry.Commission
+	proceeds, exitCommissions := 0.0, 0.0
+	for _, fill := range t.PartialExits {
+		proceeds += fill.Price * fill.Quantity
+		exitCommissions += fill.Commission
+	}
+	if t.FinalExit != nil {
+		proceeds += t.FinalExit.Price * t.FinalExit.Quantity
+		exitCommissions += t.FinalExit.Commission
+	}
+	return proceeds - entry - exitCommissions
 }
 
 // readCheckpointEvidence streams a checksum-protected checkpoint and retains
@@ -458,18 +484,96 @@ func decodeReviewSymbols(decoder *json.Decoder, accumulator, aggregate *evidence
 		return fmt.Errorf("orchestration: checkpoint symbols must be an array")
 	}
 	for decoder.More() {
-		var artifact reviewSymbolArtifact
-		if err := decoder.Decode(&artifact); err != nil {
-			return fmt.Errorf("orchestration: decode checkpoint symbol evidence: %w", err)
-		}
-		accumulator.addSymbolEvidence(artifact.Symbol, artifact.Metrics.MaxDrawdown, artifact.FinalEquity, artifact.Trades, initialEquity)
-		if aggregate != nil {
-			aggregate.addSymbolEvidence(artifact.Symbol, artifact.Metrics.MaxDrawdown, artifact.FinalEquity, artifact.Trades, initialEquity)
+		if err := decodeReviewSymbol(decoder, accumulator, aggregate, initialEquity); err != nil {
+			return err
 		}
 	}
 	end, err := decoder.Token()
 	if err != nil || end != json.Delim(']') {
 		return fmt.Errorf("orchestration: invalid checkpoint symbols")
+	}
+	return nil
+}
+
+func decodeReviewSymbol(decoder *json.Decoder, accumulator, aggregate *evidenceAccumulator, initialEquity float64) error {
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return fmt.Errorf("orchestration: invalid checkpoint symbol")
+	}
+	var symbol protocolv2.Symbol
+	var metrics reviewArtifactMetrics
+	finalEquity := 0.0
+	for decoder.More() {
+		field, err := decoder.Token()
+		if err != nil {
+			return fmt.Errorf("orchestration: read checkpoint symbol: %w", err)
+		}
+		name, ok := field.(string)
+		if !ok {
+			return fmt.Errorf("orchestration: invalid checkpoint symbol field")
+		}
+		switch name {
+		case "symbol":
+			if err := decoder.Decode(&symbol); err != nil {
+				return fmt.Errorf("orchestration: decode checkpoint symbol: %w", err)
+			}
+		case "metrics":
+			if err := decoder.Decode(&metrics); err != nil {
+				return fmt.Errorf("orchestration: decode checkpoint metrics: %w", err)
+			}
+		case "final_equity":
+			if err := decoder.Decode(&finalEquity); err != nil {
+				return fmt.Errorf("orchestration: decode checkpoint final equity: %w", err)
+			}
+		case "trades":
+			if err := decodeReviewTrades(decoder, accumulator, aggregate); err != nil {
+				return err
+			}
+		default:
+			if err := discardJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil || end != json.Delim('}') {
+		return fmt.Errorf("orchestration: invalid checkpoint symbol")
+	}
+	accumulator.addSymbolMetrics(symbol, metrics.MaxDrawdown, finalEquity, initialEquity)
+	if aggregate != nil {
+		aggregate.addSymbolMetrics(symbol, metrics.MaxDrawdown, finalEquity, initialEquity)
+	}
+	return nil
+}
+
+func decodeReviewTrades(decoder *json.Decoder, accumulator, aggregate *evidenceAccumulator) error {
+	start, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("orchestration: checkpoint trades must be an array")
+	}
+	if start == nil {
+		return nil
+	}
+	if start != json.Delim('[') {
+		return fmt.Errorf("orchestration: checkpoint trades must be an array")
+	}
+	for decoder.More() {
+		var trade reviewTrade
+		if err := decoder.Decode(&trade); err != nil {
+			return fmt.Errorf("orchestration: decode checkpoint trade: %w", err)
+		}
+		if trade.Status != execution.TradeClosed {
+			continue
+		}
+		netPnL := trade.netPnL()
+		accumulator.addClosedTradeNetPnL(netPnL)
+		if aggregate != nil {
+			aggregate.addClosedTradeNetPnL(netPnL)
+		}
+	}
+	end, err := decoder.Token()
+	if err != nil || end != json.Delim(']') {
+		return fmt.Errorf("orchestration: invalid checkpoint trades")
 	}
 	return nil
 }

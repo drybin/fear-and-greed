@@ -81,6 +81,8 @@ type CloseConfirmedSignal struct {
 	Side             Side                   `json:"side"`
 	Stop             float64                `json:"stop"`
 	Targets          []Target               `json:"targets,omitempty"`
+	ExitAllAtTP1     bool                   `json:"exit_all_at_tp1,omitempty"`
+	TimeExitAt       time.Time              `json:"time_exit_at,omitempty"`
 	Diagnostics      map[string]float64     `json:"diagnostics,omitempty"`
 }
 
@@ -105,6 +107,9 @@ func (s CloseConfirmedSignal) Validate() error {
 	}
 	if err := validatePrice("stop", s.Stop); err != nil {
 		return err
+	}
+	if !s.TimeExitAt.IsZero() && s.TimeExitAt.Location() != time.UTC {
+		return fmt.Errorf("execution: time exit must be UTC")
 	}
 	seenTargets := make(map[string]struct{}, len(s.Targets))
 	for _, target := range s.Targets {

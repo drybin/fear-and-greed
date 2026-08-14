@@ -25,6 +25,7 @@ func TestValidateResearchV3StrategyCodesRejectsMixedSuite(t *testing.T) {
 	v3 := []manifest.Strategy{
 		{Ref: protocolv2.StrategyRef{Code: "volatility-compression-breakout-v2", Version: "v2.0.0"}},
 		{Ref: protocolv2.StrategyRef{Code: "mean-reversion-v1", Version: "v1.0.0"}},
+		{Ref: protocolv2.StrategyRef{Code: "daily-low-zone-v1", Version: "v1.0.0"}},
 	}
 	require.NoError(t, manifest.ValidateResearchV3StrategyCodes(v3))
 	require.NoError(t, manifest.ValidateSupportedStrategyCodes(v3))

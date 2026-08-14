@@ -27,6 +27,7 @@ var coreStrategyCodes = map[protocolv2.StrategyCode]struct{}{
 var researchV3StrategyCodes = map[protocolv2.StrategyCode]struct{}{
 	"volatility-compression-breakout-v2": {},
 	"mean-reversion-v1":                  {},
+	"daily-low-zone-v1":                  {},
 }
 
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation

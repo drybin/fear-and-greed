@@ -74,6 +74,6 @@ func TestPrepareManifestResearchV3Suite(t *testing.T) {
 		Cutoff: cutoff, Source: manifest.SourceRevision{GitRevision: "abc123"}, Seed: 42, Suite: "research-v3",
 	})
 	require.NoError(t, err)
-	require.Len(t, m.Strategies, 2)
+	require.Len(t, m.Strategies, 3)
 	require.NoError(t, manifest.ValidateResearchV3StrategyCodes(m.Strategies))
 }

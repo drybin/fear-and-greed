@@ -21,6 +21,7 @@ const (
 	BreakoutRetestLongCode              protocolv2.StrategyCode = "breakout-retest-long-v2"
 	VolatilityCompressionBreakoutV2Code protocolv2.StrategyCode = "volatility-compression-breakout-v2"
 	MeanReversionCode                   protocolv2.StrategyCode = "mean-reversion-v1"
+	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
 // ParameterCandidate is a frozen adapter grid point. Orchestration selects
@@ -103,7 +104,9 @@ func (a adapter) signal(symbol protocolv2.Symbol, candidate protocolv2.Parameter
 			{Name: "tp1", Price: protocolv2.RoundPrice(entry.TP1)},
 			{Name: "tp2", Price: protocolv2.RoundPrice(entry.TP2)},
 		},
-		Diagnostics: diagnostics,
+		ExitAllAtTP1: entry.ExitAllAtTP1,
+		TimeExitAt:   entry.TimeExitAt.UTC(),
+		Diagnostics:  diagnostics,
 	}
 	if err := signal.Validate(); err != nil {
 		return execution.CloseConfirmedSignal{}, fmt.Errorf("candidates: %s signal: %w", a.metadata.Ref, err)
@@ -119,7 +122,21 @@ func Core() []Adapter {
 // ResearchV3 is an independent, deliberately small next-experiment suite.
 // It does not silently alter the core-v2 candidate set or its frozen results.
 func ResearchV3() []Adapter {
-	return []Adapter{vcbV2(), meanReversion()}
+	return []Adapter{vcbV2(), meanReversion(), dailyLowZone()}
+}
+
+func dailyLowZone() Adapter {
+	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(DailyLowZoneCode, "v1.0.0"), Name: "Daily Low Zone v1", Timeframe: "15m", WarmupBars: 384, Description: "Buy the zone between yesterday's low and the first earlier lower daily low; stop at the lower low and exit at yesterday's high or after two calendar days."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			if id != "daily-low-zone" {
+				return nil, fmt.Errorf("unknown daily low zone candidate %q", id)
+			}
+			return strategy.DailyLowZoneSignals(candles), nil
+		},
+	}
 }
 
 // All returns every adapter that can be evaluated by the in-process runner.

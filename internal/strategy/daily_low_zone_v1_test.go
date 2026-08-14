@@ -1,0 +1,24 @@
+package strategy
+
+import (
+	"testing"
+	"time"
+
+	"github.com/drybin/fear-and-greed/internal/domain/model"
+	"github.com/stretchr/testify/require"
+)
+
+func TestDailyLowZoneSignalsUsesFirstEarlierLowerDailyLow(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	candles := []model.Candle{
+		{OpenTime: base, High: 9, Low: 5, Close: 8},
+		{OpenTime: base.AddDate(0, 0, 1), High: 12, Low: 7, Close: 10},
+		{OpenTime: base.AddDate(0, 0, 2), High: 8, Low: 6, Close: 7},
+	}
+	signals := DailyLowZoneSignals(candles)
+	require.Len(t, signals, 1)
+	require.Equal(t, 5.0, signals[0].Stop)
+	require.Equal(t, 12.0, signals[0].TP1)
+	require.True(t, signals[0].ExitAllAtTP1)
+	require.Equal(t, base.AddDate(0, 0, 4), signals[0].TimeExitAt)
+}
