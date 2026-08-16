@@ -12,6 +12,7 @@
 - [x] 2.4 Add parameter, indicator warmup, prior-range, and adapter tests
 - [x] 2.5 Add daily-low-zone-v1 with causal daily-level search, full target
   exit, and calendar-aware two-day deadline
+- [x] 2.6 Isolate revised daily-low-zone-v1.1 in its own one-strategy suite
 
 ## 3. Protocol run
 

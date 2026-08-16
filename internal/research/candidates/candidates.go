@@ -125,6 +125,10 @@ func ResearchV3() []Adapter {
 	return []Adapter{vcbV2(), meanReversion(), dailyLowZone()}
 }
 
+// DailyLowZoneV11 exposes the revised daily-zone hypothesis as a standalone
+// suite, so it can be evaluated without running unrelated research-v3 ideas.
+func DailyLowZoneV11() []Adapter { return []Adapter{dailyLowZone()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{

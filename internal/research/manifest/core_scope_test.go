@@ -32,3 +32,11 @@ func TestValidateResearchV3StrategyCodesRejectsMixedSuite(t *testing.T) {
 	v3[1].Ref.Code = "breakout-retest-long-v2"
 	require.Error(t, manifest.ValidateSupportedStrategyCodes(v3))
 }
+
+func TestValidateDailyLowZoneV11StrategyCodesRejectsMixedSuite(t *testing.T) {
+	daily := []manifest.Strategy{{Ref: protocolv2.StrategyRef{Code: "daily-low-zone-v1", Version: "v1.1.0"}}}
+	require.NoError(t, manifest.ValidateDailyLowZoneV11StrategyCodes(daily))
+	require.NoError(t, manifest.ValidateSupportedStrategyCodes(daily))
+	daily[0].Ref.Code = "mean-reversion-v1"
+	require.Error(t, manifest.ValidateDailyLowZoneV11StrategyCodes(daily))
+}

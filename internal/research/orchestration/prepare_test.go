@@ -10,6 +10,7 @@ import (
 
 	"github.com/drybin/fear-and-greed/internal/research/manifest"
 	"github.com/drybin/fear-and-greed/internal/research/orchestration"
+	"github.com/drybin/fear-and-greed/internal/research/protocolv2"
 	"github.com/drybin/fear-and-greed/internal/research/validation"
 	"github.com/stretchr/testify/require"
 )
@@ -76,4 +77,24 @@ func TestPrepareManifestResearchV3Suite(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, m.Strategies, 3)
 	require.NoError(t, manifest.ValidateResearchV3StrategyCodes(m.Strategies))
+}
+
+func TestPrepareManifestDailyLowZoneV11Suite(t *testing.T) {
+	dir := t.TempDir()
+	candleDir := filepath.Join(dir, "candles")
+	require.NoError(t, os.MkdirAll(candleDir, 0o755))
+	cutoff := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	symbolsPath := filepath.Join(dir, "symbols.txt")
+	var symbols strings.Builder
+	for i := 0; i < 50; i++ {
+		symbol := fmt.Sprintf("D%02dUSDT", i)
+		fmt.Fprintln(&symbols, symbol)
+		require.NoError(t, os.WriteFile(filepath.Join(candleDir, symbol+".csv"), []byte("open_time,open,high,low,close,volume\n2026-07-31 23:58:00,1,2,1,2,1\n2026-07-31 23:59:00,2,3,2,3,1\n"), 0o644))
+	}
+	require.NoError(t, os.WriteFile(symbolsPath, []byte(symbols.String()), 0o644))
+	m, err := orchestration.PrepareManifest(orchestration.PrepareManifestOptions{SymbolsFile: symbolsPath, CandleDir: candleDir, OutputPath: filepath.Join(dir, "manifest.json"), Cutoff: cutoff, Source: manifest.SourceRevision{GitRevision: "abc123"}, Seed: 42, Suite: "daily-low-zone-v1_1"})
+	require.NoError(t, err)
+	require.Len(t, m.Strategies, 1)
+	require.Equal(t, protocolv2.StrategyCode("daily-low-zone-v1"), m.Strategies[0].Ref.Code)
+	require.Equal(t, protocolv2.StrategyVersion("v1.1.0"), m.Strategies[0].Ref.Version)
 }
