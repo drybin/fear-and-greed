@@ -10,9 +10,11 @@ hypotheses rather than retune rejected parameters or inspect the locked data.
   volatility-compression breakout v2, trend mean reversion v1, and daily low
   zone v1.
 - Daily low zone v1 forms today's zone from yesterday's low and the first
-  earlier daily low strictly below it; it uses that earlier low as stop,
-  yesterday's high as a full-position target, and exits at the open following
-  one additional calendar day if neither price exit occurred.
+  earlier daily low strictly below it. A separate green candle must close back
+  above yesterday's low after a non-breaching zone touch; the earlier low is
+  the stop, yesterday's high is a full-position target, and the position exits
+  at the open following one additional calendar day if neither price exit
+  occurred.
 - Keep the existing core-v2 suite and all frozen v2 artifacts unchanged.
 - Add explicit `prepare --suite research-v3`, producing a distinct manifest and
   experiment identity from the same candle cohort.

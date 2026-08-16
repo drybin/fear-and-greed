@@ -1,7 +1,6 @@
 package strategy
 
 import (
-	"sort"
 	"time"
 
 	"github.com/drybin/fear-and-greed/internal/domain/model"
@@ -25,9 +24,20 @@ func DailyLowZoneSignals(minutes []model.Candle) []EntrySignal {
 		if !ok || lower <= 0 || upper <= lower || target <= upper {
 			continue
 		}
+		zoneVisited, zoneInvalidated := false, false
 		for i := days[dayIndex].start; i < days[dayIndex].end; i++ {
 			candle := candles[i]
-			if candle.Low > upper || candle.High < lower {
+			visitedBeforeCandle := zoneVisited
+			if candle.Low < lower {
+				zoneInvalidated = true
+				continue
+			}
+			if candle.Low <= upper && candle.High >= lower {
+				zoneVisited = true
+			}
+			// The confirmation must follow an already observed zone touch. Using
+			// a completed green candle avoids assuming the intrabar price path.
+			if !visitedBeforeCandle || zoneInvalidated || candle.Open > upper || candle.Close <= upper || candle.Close <= candle.Open {
 				continue
 			}
 			dayStart := candle.OpenTime.UTC().Truncate(24 * time.Hour)
@@ -73,12 +83,13 @@ func priorLowerDailyLow(candles []model.Candle, days []dailyRange, upper float64
 }
 
 func dayLow(candles []model.Candle, day dailyRange) float64 {
-	values := make([]float64, 0, day.end-day.start)
-	for i := day.start; i < day.end; i++ {
-		values = append(values, candles[i].Low)
+	low := candles[day.start].Low
+	for i := day.start + 1; i < day.end; i++ {
+		if candles[i].Low < low {
+			low = candles[i].Low
+		}
 	}
-	sort.Float64s(values)
-	return values[0]
+	return low
 }
 
 func dayHigh(candles []model.Candle, day dailyRange) float64 {

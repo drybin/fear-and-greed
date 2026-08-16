@@ -128,7 +128,7 @@ func ResearchV3() []Adapter {
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
-		metadata: execution.StrategyMetadata{Ref: ref(DailyLowZoneCode, "v1.0.0"), Name: "Daily Low Zone v1", Timeframe: "15m", WarmupBars: 384, Description: "Buy the zone between yesterday's low and the first earlier lower daily low; stop at the lower low and exit at yesterday's high or after two calendar days."},
+		metadata: execution.StrategyMetadata{Ref: ref(DailyLowZoneCode, "v1.1.0"), Name: "Daily Low Zone v1", Timeframe: "15m", WarmupBars: 384, Description: "After a causal touch of the daily low zone, buy a green close back above yesterday's low; stop at the lower low and exit at yesterday's high or after two calendar days."},
 		grid:     grid,
 		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
 			if id != "daily-low-zone" {

@@ -1,0 +1,57 @@
+## ADDED Requirements
+
+### Requirement: Expanded strategy contract
+Every expanded strategy SHALL define a materially distinct hypothesis, invalidation conditions, stable version, timeframes, warmup, bounded grid, close-confirmed signal, initial stop, exits, and diagnostics.
+
+#### Scenario: Threshold-only proposal
+- **WHEN** a proposed strategy differs only by an indicator period or threshold
+- **THEN** it is represented inside an existing bounded grid rather than as a new strategy code
+
+### Requirement: Donchian breakout
+`donchian-breakout-long-v1` SHALL signal trend continuation only after a completed 4h close exceeds a prior-channel high calculated without the signal candle.
+
+#### Scenario: Causal breakout
+- **WHEN** trend, prior channel, breakout close, and stop conditions pass
+- **THEN** the strategy emits a next-bar long signal with channel and ATR diagnostics
+
+### Requirement: EMA pullback
+`ema-pullback-long-v1` SHALL signal recovery from a fast or medium EMA only inside a rising higher-timeframe trend.
+
+#### Scenario: Confirmed recovery
+- **WHEN** a 1h pullback touches the configured EMA and a later completed candle confirms recovery while the 4h trend passes
+- **THEN** the strategy emits a next-bar signal with a swing-or-ATR stop
+
+### Requirement: RSI trend mean reversion
+`rsi-mean-reversion-long-v1` SHALL signal short-term oversold recovery only while a causal higher-timeframe long trend passes.
+
+#### Scenario: Oversold cross back
+- **WHEN** completed 1h RSI crosses above its recovery threshold after oversold state and the 4h trend passes
+- **THEN** the strategy emits a signal with ATR stop, mean-reversion target, and time exit
+
+### Requirement: Bollinger range reversion
+`bollinger-range-reversion-long-v1` SHALL signal lower-band re-entry only when causal ADX classifies the market as a range.
+
+#### Scenario: Lower-band re-entry
+- **WHEN** price closes outside the lower band and later closes back inside while ADX remains below the configured maximum
+- **THEN** the strategy emits a next-bar signal with defined stop and band-based exit
+
+### Requirement: Volume-confirmed breakout
+`volume-breakout-long-v1` SHALL require a prior-level breakout and validated relative-volume confirmation.
+
+#### Scenario: Missing volume
+- **WHEN** volume is absent or fails quality validation
+- **THEN** the symbol is ineligible and confirmation is not bypassed
+
+### Requirement: Capitulation reversal
+`capitulation-reversal-long-v1` SHALL detect abnormal downside return and volume expansion from trailing data, then require a later recovery candle.
+
+#### Scenario: Causal recovery
+- **WHEN** capitulation thresholds pass and a later completed candle recovers the trigger level
+- **THEN** the strategy emits a next-bar signal using the known event low as stop reference
+
+### Requirement: Core protocol reuse
+All six strategies SHALL use unchanged protocol-v2 execution, costs, sizing, controls, fold selection, holdout, and research gates.
+
+#### Scenario: Strategy fails a gate
+- **WHEN** a new strategy fails sample, cost, or robustness criteria
+- **THEN** it is observed or rejected without modifying core rules in the same experiment

@@ -1,0 +1,25 @@
+schema: spec-driven
+
+context: |
+  Repository: fear-and-greed research and backtesting CLI.
+  Primary language: Go.
+  Domain: cryptocurrency spot-market data, strategy simulation, parameter research,
+  walk-forward validation, and generated research reports.
+  Strategy research must distinguish exploratory screening from out-of-sample evidence.
+  The separate fear-and-greed-online repository owns its own runtime strategy implementations;
+  this repository must not create a runtime dependency between the two projects.
+
+rules:
+  proposal:
+    - State whether reported evidence is exploratory, out-of-sample, or live-observed.
+    - Identify data leakage, survivorship, execution, and reproducibility impact.
+  design:
+    - Define causal timestamp and fill semantics for strategy or backtest changes.
+    - Define how open positions, fees, slippage, risk, and drawdown are accounted for.
+    - Keep training, test, and holdout decisions explicit and chronologically valid.
+  specs:
+    - Every research requirement must be testable with deterministic scenarios.
+    - Never permit per-symbol test-period parameter selection in promotable experiments.
+  tasks:
+    - Include deterministic tests and reproducible report artifacts for research changes.
+    - Order simulator correctness before parameter optimization and strategy ranking.
