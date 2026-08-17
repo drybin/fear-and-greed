@@ -123,6 +123,8 @@ func researchSuite(name string) ([]candidates.Adapter, error) {
 		return candidates.ResearchV3(), nil
 	case "daily-low-zone-v1_1":
 		return candidates.DailyLowZoneV11(), nil
+	case "daily-low-zone-v1_2":
+		return candidates.DailyLowZoneV12(), nil
 	default:
 		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
 	}

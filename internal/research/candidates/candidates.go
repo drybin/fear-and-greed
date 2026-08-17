@@ -129,6 +129,10 @@ func ResearchV3() []Adapter {
 // suite, so it can be evaluated without running unrelated research-v3 ideas.
 func DailyLowZoneV11() []Adapter { return []Adapter{dailyLowZone()} }
 
+// DailyLowZoneV12 evaluates the delayed-third-green confirmation separately
+// from the prior daily-zone hypothesis.
+func DailyLowZoneV12() []Adapter { return []Adapter{dailyLowZoneV12()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -139,6 +143,20 @@ func dailyLowZone() Adapter {
 				return nil, fmt.Errorf("unknown daily low zone candidate %q", id)
 			}
 			return strategy.DailyLowZoneSignals(candles), nil
+		},
+	}
+}
+
+func dailyLowZoneV12() Adapter {
+	grid := []ParameterCandidate{{ID: "daily-low-zone-third-green", Values: map[string]any{"minimum_green_candles": 3, "time_exit_days": 2}}}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(DailyLowZoneCode, "v1.2.0"), Name: "Daily Low Zone v1.2", Timeframe: "15m", WarmupBars: 384, Description: "After a causal touch of the daily low zone, wait for the third completed green 15m candle and buy only if it closes above yesterday's low; stop at the lower low and exit at yesterday's high or after two calendar days."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			if id != "daily-low-zone-third-green" {
+				return nil, fmt.Errorf("unknown daily low zone v1.2 candidate %q", id)
+			}
+			return strategy.DailyLowZoneThirdGreenSignals(candles), nil
 		},
 	}
 }

@@ -34,6 +34,10 @@ var dailyLowZoneV11StrategyCodes = map[protocolv2.StrategyCode]struct{}{
 	"daily-low-zone-v1": {},
 }
 
+var dailyLowZoneV12StrategyCodes = map[protocolv2.StrategyCode]struct{}{
+	"daily-low-zone-v1": {},
+}
+
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation
 // scope after normal manifest validation. It rejects strategies reserved for
 // follow-up research changes without restricting non-core manifest consumers.
@@ -51,6 +55,10 @@ func ValidateDailyLowZoneV11StrategyCodes(strategies []Strategy) error {
 	return validateStrategySuite("daily-low-zone-v1_1", strategies, dailyLowZoneV11StrategyCodes)
 }
 
+func ValidateDailyLowZoneV12StrategyCodes(strategies []Strategy) error {
+	return validateStrategySuite("daily-low-zone-v1_2", strategies, dailyLowZoneV12StrategyCodes)
+}
+
 // ValidateSupportedStrategyCodes accepts one complete protocol suite, never a
 // mixture of historical core and new research candidates.
 func ValidateSupportedStrategyCodes(strategies []Strategy) error {
@@ -60,7 +68,10 @@ func ValidateSupportedStrategyCodes(strategies []Strategy) error {
 	if err := ValidateResearchV3StrategyCodes(strategies); err == nil {
 		return nil
 	}
-	return ValidateDailyLowZoneV11StrategyCodes(strategies)
+	if err := ValidateDailyLowZoneV11StrategyCodes(strategies); err == nil {
+		return nil
+	}
+	return ValidateDailyLowZoneV12StrategyCodes(strategies)
 }
 
 func validateStrategySuite(name string, strategies []Strategy, allowed map[protocolv2.StrategyCode]struct{}) error {

@@ -11,6 +11,17 @@ import (
 // first earlier daily low that is strictly lower. The deadline is the open of
 // the day after one full additional holding day has elapsed.
 func DailyLowZoneSignals(minutes []model.Candle) []EntrySignal {
+	return dailyLowZoneSignals(minutes, 1, true)
+}
+
+// DailyLowZoneThirdGreenSignals requires three completed green candles after
+// the zone touch. The third or later green candle may enter only after closing
+// back above yesterday's low.
+func DailyLowZoneThirdGreenSignals(minutes []model.Candle) []EntrySignal {
+	return dailyLowZoneSignals(minutes, 3, false)
+}
+
+func dailyLowZoneSignals(minutes []model.Candle, minimumGreenCandles int, requireOpenAtOrBelowZone bool) []EntrySignal {
 	candles := AggregateMinutes(minutes, 15)
 	if len(candles) == 0 {
 		return nil
@@ -25,6 +36,7 @@ func DailyLowZoneSignals(minutes []model.Candle) []EntrySignal {
 			continue
 		}
 		zoneVisited, zoneInvalidated := false, false
+		greenCandles := 0
 		for i := days[dayIndex].start; i < days[dayIndex].end; i++ {
 			candle := candles[i]
 			visitedBeforeCandle := zoneVisited
@@ -35,9 +47,12 @@ func DailyLowZoneSignals(minutes []model.Candle) []EntrySignal {
 			if candle.Low <= upper && candle.High >= lower {
 				zoneVisited = true
 			}
+			if visitedBeforeCandle && candle.Close > candle.Open {
+				greenCandles++
+			}
 			// The confirmation must follow an already observed zone touch. Using
 			// a completed green candle avoids assuming the intrabar price path.
-			if !visitedBeforeCandle || zoneInvalidated || candle.Open > upper || candle.Close <= upper || candle.Close <= candle.Open {
+			if !visitedBeforeCandle || zoneInvalidated || greenCandles < minimumGreenCandles || candle.Close <= upper || (requireOpenAtOrBelowZone && candle.Open > upper) {
 				continue
 			}
 			dayStart := candle.OpenTime.UTC().Truncate(24 * time.Hour)
