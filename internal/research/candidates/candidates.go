@@ -163,7 +163,9 @@ func dailyLowZoneV12() Adapter {
 
 // All returns every adapter that can be evaluated by the in-process runner.
 func All() []Adapter {
-	return append(append([]Adapter{}, Core()...), ResearchV3()...)
+	all := append([]Adapter{}, Core()...)
+	all = append(all, ResearchV3()...)
+	return append(all, DailyLowZoneV12()...)
 }
 
 // RegisterCore installs exactly the four scope-approved adapters.

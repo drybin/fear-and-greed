@@ -99,13 +99,13 @@ func NewInProcessRunner(m manifest.Manifest, candles CandleStore) (*InProcessRun
 	if err := manifest.ValidateSupportedStrategyCodes(m.Strategies); err != nil {
 		return nil, err
 	}
-	byCode := map[protocolv2.StrategyCode]candidates.Adapter{}
+	byRef := map[protocolv2.StrategyRef]candidates.Adapter{}
 	for _, adapter := range candidates.All() {
-		byCode[adapter.Metadata().Ref.Code] = adapter
+		byRef[adapter.Metadata().Ref] = adapter
 	}
 	adapters := map[string]candidates.Adapter{}
 	for _, strategy := range m.Strategies {
-		adapter, ok := byCode[strategy.Ref.Code]
+		adapter, ok := byRef[strategy.Ref]
 		if !ok {
 			return nil, fmt.Errorf("orchestration: no adapter for %s", strategy.Ref)
 		}

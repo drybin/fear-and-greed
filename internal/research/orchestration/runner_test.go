@@ -105,9 +105,28 @@ func TestInProcessRunnerRejectsManifestAdapterDrift(t *testing.T) {
 			mutate(&m.Strategies[0])
 			require.NoError(t, m.Freeze())
 			_, err := orchestration.NewInProcessRunner(m, orchestration.DirCandleStore{Dir: t.TempDir()})
+			if name == "version" {
+				require.ErrorContains(t, err, "no adapter")
+				return
+			}
 			require.ErrorContains(t, err, "does not match")
 		})
 	}
+}
+
+func TestInProcessRunnerSelectsDailyLowZoneAdapterByVersion(t *testing.T) {
+	m := validInProcessManifest(protocolv2.SHA256Hex(strings.Repeat("a", 64)))
+	adapter := candidates.DailyLowZoneV12()[0]
+	metadata := adapter.Metadata()
+	m.Strategies = []manifest.Strategy{{
+		Ref: metadata.Ref, Timeframe: metadata.Timeframe, WarmupBars: metadata.WarmupBars,
+		DefaultParams: map[string]any{}, Grid: []manifest.ParameterCandidate{{ID: adapter.Grid()[0].ID, Values: adapter.Grid()[0].Values}},
+	}}
+	require.NoError(t, m.Freeze())
+	runner, err := orchestration.NewInProcessRunner(m, orchestration.DirCandleStore{Dir: t.TempDir()})
+	require.NoError(t, err)
+	require.Contains(t, runner.Adapters, metadata.Ref.String())
+	require.Equal(t, metadata.Ref, runner.Adapters[metadata.Ref.String()].Metadata().Ref)
 }
 
 func validInProcessManifest(candleSHA protocolv2.SHA256Hex) manifest.Manifest {
