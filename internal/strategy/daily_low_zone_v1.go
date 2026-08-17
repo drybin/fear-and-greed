@@ -11,17 +11,23 @@ import (
 // first earlier daily low that is strictly lower. The deadline is the open of
 // the day after one full additional holding day has elapsed.
 func DailyLowZoneSignals(minutes []model.Candle) []EntrySignal {
-	return dailyLowZoneSignals(minutes, 1, true)
+	return dailyLowZoneSignals(minutes, 1, true, 0)
 }
 
 // DailyLowZoneThirdGreenSignals requires three completed green candles after
 // the zone touch. The third or later green candle may enter only after closing
 // back above yesterday's low.
 func DailyLowZoneThirdGreenSignals(minutes []model.Candle) []EntrySignal {
-	return dailyLowZoneSignals(minutes, 3, false)
+	return dailyLowZoneSignals(minutes, 3, false, 0)
 }
 
-func dailyLowZoneSignals(minutes []model.Candle, minimumGreenCandles int, requireOpenAtOrBelowZone bool) []EntrySignal {
+// DailyLowZoneThirdGreenOnePercentSignals keeps the delayed confirmation and
+// sets a full-position take-profit one percent above the eventual fill price.
+func DailyLowZoneThirdGreenOnePercentSignals(minutes []model.Candle) []EntrySignal {
+	return dailyLowZoneSignals(minutes, 3, false, 1)
+}
+
+func dailyLowZoneSignals(minutes []model.Candle, minimumGreenCandles int, requireOpenAtOrBelowZone bool, targetPercent float64) []EntrySignal {
 	candles := AggregateMinutes(minutes, 15)
 	if len(candles) == 0 {
 		return nil
@@ -30,9 +36,13 @@ func dailyLowZoneSignals(minutes []model.Candle, minimumGreenCandles int, requir
 	var signals []EntrySignal
 	for dayIndex := 1; dayIndex < len(days); dayIndex++ {
 		previous := days[dayIndex-1]
-		upper, target := dayLow(candles, previous), dayHigh(candles, previous)
+		upper := dayLow(candles, previous)
+		target := 0.0
+		if targetPercent == 0 {
+			target = dayHigh(candles, previous)
+		}
 		lower, ok := priorLowerDailyLow(candles, days[:dayIndex-1], upper)
-		if !ok || lower <= 0 || upper <= lower || target <= upper {
+		if !ok || lower <= 0 || upper <= lower || (targetPercent == 0 && target <= upper) {
 			continue
 		}
 		zoneVisited, zoneInvalidated := false, false
@@ -58,8 +68,8 @@ func dailyLowZoneSignals(minutes []model.Candle, minimumGreenCandles int, requir
 			dayStart := candle.OpenTime.UTC().Truncate(24 * time.Hour)
 			signals = append(signals, EntrySignal{
 				Time: candle.OpenTime, EntryPrice: candle.Close, Stop: lower, TP1: target, TP2: target,
-				ExitAllAtTP1: true, TimeExitAt: dayStart.AddDate(0, 0, 2),
-				Diagnostics: map[string]float64{"zone_low": lower, "zone_high": upper, "previous_day_high": target},
+				TargetPercent: targetPercent, ExitAllAtTP1: true, TimeExitAt: dayStart.AddDate(0, 0, 2),
+				Diagnostics: map[string]float64{"zone_low": lower, "zone_high": upper, "previous_day_high": target, "target_percent": targetPercent},
 			})
 			break // One planned entry per daily zone.
 		}

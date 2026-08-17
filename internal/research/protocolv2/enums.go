@@ -25,10 +25,10 @@ func (p Phase) Validate() error {
 type RunStatus string
 
 const (
-	RunStatusPending   RunStatus = "pending"
-	RunStatusRunning   RunStatus = "running"
-	RunStatusCompleted RunStatus = "completed"
-	RunStatusFailed    RunStatus = "failed"
+	RunStatusPending     RunStatus = "pending"
+	RunStatusRunning     RunStatus = "running"
+	RunStatusCompleted   RunStatus = "completed"
+	RunStatusFailed      RunStatus = "failed"
 	RunStatusInterrupted RunStatus = "interrupted"
 )
 
@@ -100,18 +100,19 @@ func (s DecisionStatus) Validate() error {
 type RejectionReason string
 
 const (
-	RejectionInvalidStop          RejectionReason = "invalid_stop"
-	RejectionInsufficientCash     RejectionReason = "insufficient_cash"
-	RejectionMissingNextBar       RejectionReason = "missing_next_bar"
-	RejectionInsufficientWarmup   RejectionReason = "insufficient_warmup"
-	RejectionShortHistory         RejectionReason = "short_history"
-	RejectionDataQuality          RejectionReason = "data_quality"
-	RejectionHoldoutAccessDenied  RejectionReason = "holdout_access_denied"
+	RejectionInvalidStop           RejectionReason = "invalid_stop"
+	RejectionInsufficientCash      RejectionReason = "insufficient_cash"
+	RejectionMissingNextBar        RejectionReason = "missing_next_bar"
+	RejectionInsufficientWarmup    RejectionReason = "insufficient_warmup"
+	RejectionShortHistory          RejectionReason = "short_history"
+	RejectionDataQuality           RejectionReason = "data_quality"
+	RejectionHoldoutAccessDenied   RejectionReason = "holdout_access_denied"
 	RejectionDuplicateRegistration RejectionReason = "duplicate_registration"
-	RejectionInvalidQuantity      RejectionReason = "invalid_quantity"
-	RejectionNotionalCap          RejectionReason = "notional_cap"
-	RejectionUnknownStrategy      RejectionReason = "unknown_strategy"
-	RejectionDeferredStrategy     RejectionReason = "deferred_strategy"
+	RejectionInvalidQuantity       RejectionReason = "invalid_quantity"
+	RejectionInvalidTarget         RejectionReason = "invalid_target"
+	RejectionNotionalCap           RejectionReason = "notional_cap"
+	RejectionUnknownStrategy       RejectionReason = "unknown_strategy"
+	RejectionDeferredStrategy      RejectionReason = "deferred_strategy"
 )
 
 func (r RejectionReason) Validate() error {
@@ -119,7 +120,7 @@ func (r RejectionReason) Validate() error {
 	case RejectionInvalidStop, RejectionInsufficientCash, RejectionMissingNextBar,
 		RejectionInsufficientWarmup, RejectionShortHistory, RejectionDataQuality,
 		RejectionHoldoutAccessDenied, RejectionDuplicateRegistration,
-		RejectionInvalidQuantity, RejectionNotionalCap, RejectionUnknownStrategy,
+		RejectionInvalidQuantity, RejectionInvalidTarget, RejectionNotionalCap, RejectionUnknownStrategy,
 		RejectionDeferredStrategy:
 		return nil
 	default:

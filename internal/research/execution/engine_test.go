@@ -69,6 +69,22 @@ func TestEngineWaitsForAggregateSignalCandleToClose(t *testing.T) {
 	require.NotEqual(t, 999.0, result.Trades[0].Entry.ReferencePrice)
 }
 
+func TestEngineResolvesPercentTargetFromActualEntryFill(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	config := engineConfig()
+	config.CommissionBPS, config.SlippageBPS = 0, 0
+	signal := engineSignal("percent-target", start, 90)
+	signal.TargetPercent, signal.ExitAllAtTP1 = 1, true
+	result := run(t, config, []execution.Candle{
+		bar(start, 100, 100, 100, 100),
+		bar(start.Add(time.Hour), 102, 103.1, 101, 103),
+	}, signal)
+	require.Len(t, result.Trades, 1)
+	require.Equal(t, 102.0, result.Trades[0].Entry.Price)
+	require.Equal(t, 103.02, result.Trades[0].FinalExit.ReferencePrice)
+	require.Equal(t, execution.ExitReasonTarget, result.Trades[0].FinalExit.Reason)
+}
+
 func TestEngineGapPolicyAndGapThroughStop(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	candles := []execution.Candle{

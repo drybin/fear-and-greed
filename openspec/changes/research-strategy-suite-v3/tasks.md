@@ -14,6 +14,7 @@
   exit, and calendar-aware two-day deadline
 - [x] 2.6 Isolate revised daily-low-zone-v1.1 in its own one-strategy suite
 - [x] 2.7 Add isolated daily-low-zone-v1.2 with third-green-candle confirmation
+- [x] 2.8 Add isolated daily-low-zone-v1.3 with a one-percent fill-relative target
 
 ## 3. Protocol run
 

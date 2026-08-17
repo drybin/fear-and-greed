@@ -99,3 +99,11 @@ func TestDailyLowZoneV12IsolatedAdapter(t *testing.T) {
 	require.Equal(t, protocolv2.Timeframe("15m"), adapters[0].Metadata().Timeframe)
 	require.Equal(t, protocolv2.ParameterCandidateID("daily-low-zone-third-green"), adapters[0].Grid()[0].ID)
 }
+
+func TestDailyLowZoneV13UsesDynamicOnePercentTarget(t *testing.T) {
+	adapter := DailyLowZoneV13()[0].(adapter)
+	signal, err := adapter.signal("BTCUSDT", "daily-low-zone-third-green-tp1pct", 0, strategy.EntrySignal{Time: time.Now().UTC(), EntryPrice: 100, Stop: 90, TargetPercent: 1, ExitAllAtTP1: true})
+	require.NoError(t, err)
+	require.Equal(t, 1.0, signal.TargetPercent)
+	require.Empty(t, signal.Targets)
+}

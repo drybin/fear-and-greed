@@ -31,14 +31,15 @@ type TradeEvent struct {
 // Time is the opening timestamp of the bar whose close confirmed the setup;
 // the protocol-v2 adapter maps it to next-bar execution.
 type EntrySignal struct {
-	Time         time.Time
-	EntryPrice   float64
-	Stop         float64
-	TP1          float64
-	TP2          float64
-	ExitAllAtTP1 bool
-	TimeExitAt   time.Time
-	Diagnostics  map[string]float64
+	Time          time.Time
+	EntryPrice    float64
+	Stop          float64
+	TP1           float64
+	TP2           float64
+	TargetPercent float64
+	ExitAllAtTP1  bool
+	TimeExitAt    time.Time
+	Diagnostics   map[string]float64
 }
 
 // TradeRoundTripPnLPct returns (exit/entry - 1) * 100 for a simple single exit.

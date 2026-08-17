@@ -44,7 +44,7 @@ func prepareResearchCommand() *cli.Command {
 			&cli.StringFlag{Name: "manifest", Required: true, Usage: "canonical manifest output path"},
 			&cli.StringFlag{Name: "cutoff", Required: true, Usage: "exclusive UTC cutoff date (YYYY-MM-DD)"},
 			&cli.StringFlag{Name: "workdir", Value: ".", Usage: "clean repository root"},
-			&cli.StringFlag{Name: "suite", Value: "core-v2", Usage: "research suite: core-v2, research-v3, daily-low-zone-v1_1, or daily-low-zone-v1_2"},
+			&cli.StringFlag{Name: "suite", Value: "core-v2", Usage: "research suite: core-v2, research-v3, daily-low-zone-v1_1, daily-low-zone-v1_2, or daily-low-zone-v1_3"},
 			&cli.Uint64Flag{Name: "seed", Value: 42, Usage: "frozen random-control seed"},
 		},
 		Action: func(c *cli.Context) error {

@@ -95,18 +95,20 @@ func (a adapter) signal(symbol protocolv2.Symbol, candidate protocolv2.Parameter
 	diagnostics["legacy_entry_price"] = entry.EntryPrice
 	diagnostics["candidate_index"] = float64(index)
 	diagnostics["candidate_id_hash"] = stableIDValue(candidate)
+	targets := []execution.Target{{Name: "tp1", Price: protocolv2.RoundPrice(entry.TP1)}, {Name: "tp2", Price: protocolv2.RoundPrice(entry.TP2)}}
+	if entry.TargetPercent != 0 {
+		targets = nil
+	}
 	signal := execution.CloseConfirmedSignal{
 		SignalID: fmt.Sprintf("%s-%s-%d-%d", a.metadata.Ref.Code, candidate, index, entry.Time.Unix()),
 		Strategy: a.metadata.Ref, Symbol: symbol, Timeframe: a.metadata.Timeframe,
 		SourceCandleTime: entry.Time.UTC(), Side: execution.SideLong,
-		Stop: protocolv2.RoundPrice(entry.Stop),
-		Targets: []execution.Target{
-			{Name: "tp1", Price: protocolv2.RoundPrice(entry.TP1)},
-			{Name: "tp2", Price: protocolv2.RoundPrice(entry.TP2)},
-		},
-		ExitAllAtTP1: entry.ExitAllAtTP1,
-		TimeExitAt:   entry.TimeExitAt.UTC(),
-		Diagnostics:  diagnostics,
+		Stop:          protocolv2.RoundPrice(entry.Stop),
+		Targets:       targets,
+		TargetPercent: entry.TargetPercent,
+		ExitAllAtTP1:  entry.ExitAllAtTP1,
+		TimeExitAt:    entry.TimeExitAt.UTC(),
+		Diagnostics:   diagnostics,
 	}
 	if err := signal.Validate(); err != nil {
 		return execution.CloseConfirmedSignal{}, fmt.Errorf("candidates: %s signal: %w", a.metadata.Ref, err)
@@ -132,6 +134,10 @@ func DailyLowZoneV11() []Adapter { return []Adapter{dailyLowZone()} }
 // DailyLowZoneV12 evaluates the delayed-third-green confirmation separately
 // from the prior daily-zone hypothesis.
 func DailyLowZoneV12() []Adapter { return []Adapter{dailyLowZoneV12()} }
+
+// DailyLowZoneV13 evaluates the delayed confirmation with a dynamic one
+// percent take-profit calculated from the actual next-bar fill.
+func DailyLowZoneV13() []Adapter { return []Adapter{dailyLowZoneV13()} }
 
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
@@ -161,11 +167,26 @@ func dailyLowZoneV12() Adapter {
 	}
 }
 
+func dailyLowZoneV13() Adapter {
+	grid := []ParameterCandidate{{ID: "daily-low-zone-third-green-tp1pct", Values: map[string]any{"minimum_green_candles": 3, "target_percent": 1.0, "time_exit_days": 2}}}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(DailyLowZoneCode, "v1.3.0"), Name: "Daily Low Zone v1.3", Timeframe: "15m", WarmupBars: 384, Description: "After a causal daily low-zone touch, buy the third completed green 15m confirmation and exit the full position one percent above its actual entry fill, at stop, or after two calendar days."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			if id != "daily-low-zone-third-green-tp1pct" {
+				return nil, fmt.Errorf("unknown daily low zone v1.3 candidate %q", id)
+			}
+			return strategy.DailyLowZoneThirdGreenOnePercentSignals(candles), nil
+		},
+	}
+}
+
 // All returns every adapter that can be evaluated by the in-process runner.
 func All() []Adapter {
 	all := append([]Adapter{}, Core()...)
 	all = append(all, ResearchV3()...)
-	return append(all, DailyLowZoneV12()...)
+	all = append(all, DailyLowZoneV12()...)
+	return append(all, DailyLowZoneV13()...)
 }
 
 // RegisterCore installs exactly the four scope-approved adapters.

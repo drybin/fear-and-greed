@@ -225,6 +225,14 @@ func (a *account) entriesAt(c Candle, barIndex int, pending []CloseConfirmedSign
 
 func (a *account) enter(s CloseConfirmedSignal, c Candle, barIndex int) {
 	entry := a.buyPrice(c.Open)
+	if s.TargetPercent != 0 {
+		target := protocolv2.RoundPrice(entry * (1 + s.TargetPercent/100))
+		if !finite(target) || target <= entry {
+			a.reject(s, c.Time, protocolv2.RejectionInvalidTarget, map[string]float64{"entry_price": entry, "target_percent": s.TargetPercent})
+			return
+		}
+		s.Targets = []Target{{Name: "tp1", Price: target}}
+	}
 	distance := entry - s.Stop
 	if !finite(distance) || distance <= 0 {
 		a.reject(s, c.Time, protocolv2.RejectionInvalidStop, map[string]float64{"entry_price": entry, "stop": s.Stop})

@@ -81,6 +81,7 @@ type CloseConfirmedSignal struct {
 	Side             Side                   `json:"side"`
 	Stop             float64                `json:"stop"`
 	Targets          []Target               `json:"targets,omitempty"`
+	TargetPercent    float64                `json:"target_percent,omitempty"`
 	ExitAllAtTP1     bool                   `json:"exit_all_at_tp1,omitempty"`
 	TimeExitAt       time.Time              `json:"time_exit_at,omitempty"`
 	Diagnostics      map[string]float64     `json:"diagnostics,omitempty"`
@@ -107,6 +108,14 @@ func (s CloseConfirmedSignal) Validate() error {
 	}
 	if err := validatePrice("stop", s.Stop); err != nil {
 		return err
+	}
+	if s.TargetPercent != 0 {
+		if math.IsNaN(s.TargetPercent) || math.IsInf(s.TargetPercent, 0) || s.TargetPercent <= 0 {
+			return fmt.Errorf("execution: target percent must be finite and positive")
+		}
+		if len(s.Targets) != 0 {
+			return fmt.Errorf("execution: target percent cannot be combined with absolute targets")
+		}
 	}
 	if !s.TimeExitAt.IsZero() && s.TimeExitAt.Location() != time.UTC {
 		return fmt.Errorf("execution: time exit must be UTC")
