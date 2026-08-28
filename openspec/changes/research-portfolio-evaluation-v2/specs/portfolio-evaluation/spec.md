@@ -42,9 +42,24 @@ Every portfolio report SHALL compare aligned cash, BTC buy-and-hold, and equal-w
 - **WHEN** a scheduled rebalance boundary arrives
 - **THEN** only then-eligible symbols and prior completed returns enter ranking
 
+#### Scenario: Diagnostic first run
+- **WHEN** no immutable standalone artifact has `research-pass`
+- **THEN** relative strength may run only with `diagnostic=true` and cannot receive `portfolio-pass`
+
+#### Scenario: Current rebalance candle
+- **WHEN** the fill-day candle later changes
+- **THEN** its own ranking, regime decision, and opening orders remain unchanged
+
 ### Requirement: Portfolio decision
 The engine SHALL produce `portfolio-pass`, `observe`, or `reject` from manifest-frozen portfolio gates without changing standalone decisions.
 
 #### Scenario: Portfolio rejection
 - **WHEN** correlated drawdown, concentration, benchmark, capacity, or stress-cost gates fail
 - **THEN** the portfolio result is rejected while source research decisions remain unchanged
+
+### Requirement: Reproducible portfolio workflow
+The workflow SHALL freeze a portfolio manifest before execution, verify the exact clean source revision and all input checksums, and SHALL NOT overwrite a different completed report.
+
+#### Scenario: Existing data
+- **WHEN** the portfolio experiment starts from an existing protocol-v2 universe
+- **THEN** it reads the fingerprinted local candle files without downloading them again

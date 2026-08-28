@@ -13,6 +13,7 @@ import (
 
 	"github.com/drybin/fear-and-greed/internal/research/manifest"
 	"github.com/drybin/fear-and-greed/internal/research/orchestration"
+	"github.com/drybin/fear-and-greed/internal/research/portfolio"
 	"github.com/drybin/fear-and-greed/internal/research/protocolv2"
 	"github.com/urfave/cli/v2"
 )
@@ -30,6 +31,72 @@ func NewResearchValidateCommand() *cli.Command {
 			freezeResearchCommand(),
 			reviewResearchCommand(),
 			finalResearchCommand(),
+			preparePortfolioCommand(),
+			runPortfolioCommand(),
+		},
+	}
+}
+
+func preparePortfolioCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "portfolio-prepare",
+		Usage: "freeze a shared-capital relative-strength experiment",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "research-manifest", Required: true, Usage: "frozen protocol-v2 source manifest"},
+			&cli.StringFlag{Name: "manifest", Required: true, Usage: "portfolio manifest output path"},
+			&cli.StringFlag{Name: "workdir", Value: ".", Usage: "clean repository root"},
+			&cli.BoolFlag{Name: "diagnostic", Value: true, Usage: "allow a portfolio-native experiment without research-pass signal artifacts"},
+		},
+		Action: func(c *cli.Context) error {
+			source, err := manifest.GitRevision(c.String("workdir"))
+			if err != nil {
+				return err
+			}
+			if source.Dirty {
+				return fmt.Errorf("portfolio prepare requires a clean worktree")
+			}
+			m, err := portfolio.Prepare(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"))
+			if err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(c.App.Writer, "portfolio manifest prepared: %s (%s)\n", c.String("manifest"), m.ID)
+			return nil
+		},
+	}
+}
+
+func runPortfolioCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "portfolio-run",
+		Usage: "run the frozen shared-capital relative-strength experiment",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "manifest", Required: true, Usage: "frozen portfolio manifest"},
+			&cli.StringFlag{Name: "candle-dir", Required: true, Usage: "directory containing SYMBOL.csv files"},
+			&cli.StringFlag{Name: "output", Required: true, Usage: "immutable portfolio report output path"},
+			&cli.StringFlag{Name: "workdir", Value: ".", Usage: "clean repository root"},
+		},
+		Action: func(c *cli.Context) error {
+			raw, err := os.ReadFile(c.String("manifest"))
+			if err != nil {
+				return err
+			}
+			m, err := portfolio.DecodeManifest(raw)
+			if err != nil {
+				return err
+			}
+			source, err := manifest.GitRevision(c.String("workdir"))
+			if err != nil {
+				return err
+			}
+			if source.Dirty || source.GitRevision != m.ImplementationRevision {
+				return fmt.Errorf("portfolio source differs from manifest: current %s dirty=%t, manifest %s", source.GitRevision, source.Dirty, m.ImplementationRevision)
+			}
+			report, err := portfolio.Run(c.Context, m, c.String("candle-dir"), c.String("output"))
+			if err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(c.App.Writer, "portfolio complete: %s; return=%.2f%% drawdown=%.2f%% decision=%s\n", c.String("output"), report.Base.NetReturn*100, report.Base.MaxDrawdown*100, report.Decision.Status)
+			return nil
 		},
 	}
 }
