@@ -46,6 +46,7 @@ func preparePortfolioCommand() *cli.Command {
 			&cli.StringFlag{Name: "manifest", Required: true, Usage: "portfolio manifest output path"},
 			&cli.StringFlag{Name: "workdir", Value: ".", Usage: "clean repository root"},
 			&cli.BoolFlag{Name: "diagnostic", Value: true, Usage: "allow a portfolio-native experiment without research-pass signal artifacts"},
+			&cli.StringFlag{Name: "regime-mode", Value: string(portfolio.RegimeModeBoth), Usage: "relative-strength regime: both, btc-ema, breadth, or none"},
 		},
 		Action: func(c *cli.Context) error {
 			source, err := manifest.GitRevision(c.String("workdir"))
@@ -55,7 +56,7 @@ func preparePortfolioCommand() *cli.Command {
 			if source.Dirty {
 				return fmt.Errorf("portfolio prepare requires a clean worktree")
 			}
-			m, err := portfolio.Prepare(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"))
+			m, err := portfolio.Prepare(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"), portfolio.RegimeMode(c.String("regime-mode")))
 			if err != nil {
 				return err
 			}

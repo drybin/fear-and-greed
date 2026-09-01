@@ -16,7 +16,7 @@ import (
 	"github.com/drybin/fear-and-greed/internal/research/protocolv2"
 )
 
-func Prepare(sourcePath, outputPath, revision string, diagnostic bool) (Manifest, error) {
+func Prepare(sourcePath, outputPath, revision string, diagnostic bool, regimeMode RegimeMode) (Manifest, error) {
 	raw, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("portfolio: read source manifest: %w", err)
@@ -25,7 +25,7 @@ func Prepare(sourcePath, outputPath, revision string, diagnostic bool) (Manifest
 	if err != nil {
 		return Manifest{}, err
 	}
-	m, err := DefaultManifest(source, revision, diagnostic)
+	m, err := DefaultManifest(source, revision, diagnostic, regimeMode)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -88,7 +88,7 @@ func Run(ctx context.Context, m Manifest, candleDir, outputPath string) (Report,
 		Strategy: protocolv2.StrategyRef{
 			Code: protocolv2.StrategyCode(StrategyCode), Version: protocolv2.StrategyVersion(StrategyVersion),
 		},
-		Candidate:    "rs-90d-vol30-top5",
+		Candidate:    relativeStrengthCandidate(m.RelativeStrength.RegimeMode),
 		Diagnostic:   m.Diagnostic,
 		Base:         baseMetrics,
 		Stress:       stressMetrics,
@@ -105,6 +105,10 @@ func Run(ctx context.Context, m Manifest, candleDir, outputPath string) (Report,
 		return Report{}, err
 	}
 	return report, nil
+}
+
+func relativeStrengthCandidate(mode RegimeMode) string {
+	return "rs-90d-vol30-top5-" + string(mode.normalized())
 }
 
 func (r Report) Validate() error {

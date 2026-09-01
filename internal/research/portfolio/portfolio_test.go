@@ -50,6 +50,27 @@ func TestRelativeStrengthUsesOnlyCompletedPreRebalanceBarsAndBreaksTies(t *testi
 	require.Equal(t, original, after, "the fill-day candle must not influence its own ranking")
 }
 
+func TestRegimeModesEnableOnlyTheirFrozenFilters(t *testing.T) {
+	tests := []struct {
+		name            string
+		mode            RegimeMode
+		btcAboveEMA     bool
+		breadthPositive bool
+		want            bool
+	}{
+		{name: "both requires both inputs", mode: RegimeModeBoth, btcAboveEMA: true, breadthPositive: false, want: false},
+		{name: "btc ema ignores breadth", mode: RegimeModeBTCEMA, btcAboveEMA: true, breadthPositive: false, want: true},
+		{name: "breadth ignores btc ema", mode: RegimeModeBreadth, btcAboveEMA: false, breadthPositive: true, want: true},
+		{name: "none ignores both filters", mode: RegimeModeNone, btcAboveEMA: false, breadthPositive: false, want: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.want, regimeEnabled(test.mode, test.btcAboveEMA, test.breadthPositive))
+		})
+	}
+	require.Error(t, RegimeMode("unknown").Validate())
+}
+
 func TestEngineEnforcesSlotsAndReconcilesCash(t *testing.T) {
 	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
 	bars := map[protocolv2.Symbol][]DailyBar{}
@@ -164,7 +185,7 @@ func TestWorkflowVerifiesInputsAndWritesReproducibleReport(t *testing.T) {
 		BaseCosts:              CostProfile{CommissionBPS: 10, SlippageBPS: 5},
 		StressCosts:            CostProfile{CommissionBPS: 10, SlippageBPS: 15},
 		Limits:                 Limits{InitialCapital: 10_000, RiskPerTradePercent: 1, MaxPositionPercent: 20, MaxPositions: 2, MaxAggregateRiskPct: 5},
-		RelativeStrength:       RelativeStrengthConfig{ReturnLookbackDays: 3, VolatilityDays: 3, ATRDays: 3, StopATR: 2, TopK: 1, ExitRank: 2, BTCEMADays: 3, MinPositiveBreadth: 0, RebalanceWeekday: time.Monday},
+		RelativeStrength:       RelativeStrengthConfig{ReturnLookbackDays: 3, VolatilityDays: 3, ATRDays: 3, StopATR: 2, TopK: 1, ExitRank: 2, BTCEMADays: 3, MinPositiveBreadth: 0, RebalanceWeekday: time.Monday, RegimeMode: RegimeModeNone},
 		Gates:                  Gates{MinNetReturn: -1, MaxDrawdown: 1, MinExcessVsBTC: -1, MinExcessVsEqualWeight: -1, MaxContribution: 1},
 	}
 	require.NoError(t, m.freeze())
@@ -174,6 +195,7 @@ func TestWorkflowVerifiesInputsAndWritesReproducibleReport(t *testing.T) {
 	require.FileExists(t, output)
 	require.Equal(t, m.ID, report.ExperimentID)
 	require.NotEmpty(t, report.Rebalances)
+	require.Equal(t, "rs-90d-vol30-top5-none", report.Candidate)
 	require.Equal(t, "observe", report.Decision.Status)
 	_, err = Run(context.Background(), m, dir, output)
 	require.NoError(t, err, "identical reruns must reuse the immutable artifact")

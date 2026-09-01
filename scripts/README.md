@@ -25,6 +25,27 @@ SUITE=research-v3 ./scripts/run_research_v2.sh
 Это создаст новый manifest и experiment ID. Relative strength намеренно не
 входит в этот прогон: он требует следующего portfolio-исследования.
 
+## Portfolio: ablation режимов рынка
+
+После первого диагностического результата relative strength сравнивается без
+изменения ranking, риска или данных. Скрипт последовательно создаёт четыре
+отдельных immutable запуска: `both`, `btc-ema`, `breadth` и `none`.
+
+```bash
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  ./scripts/run_portfolio_regime_ablation.sh
+```
+
+Сначала требуется чистый закоммиченный worktree и свежий CLI:
+
+```bash
+make build-cli
+```
+
+CSV повторно не загружаются. Скрипт запускает проверку Go-тестов в Docker и
+сверяет fingerprint каждого входного CSV перед каждым вариантом. По умолчанию
+отчёты будут лежать в `data/research-v2/portfolio-runs/regime-ablation-<git-sha>/`.
+
 Незавершённые run-директории старых revisions можно сначала посмотреть, а
 затем явно удалить:
 

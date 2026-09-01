@@ -45,3 +45,10 @@ build:
 	docker run --init -it --rm --env-file .env -v ${PWD}:/app -w /app  golang:1.22 go build -o minter /app/cmd/cli/main.go
 
 ################################################################################################################
+.PHONY: build-cli
+build-cli:
+	$(call _info,"Build CLI with docker...")
+	mkdir -p bin
+	docker run --rm --init -v ${PWD}:/app -w /app golang:1.22 go build -buildvcs=false -o bin/cli ./cmd/cli/...
+
+################################################################################################################

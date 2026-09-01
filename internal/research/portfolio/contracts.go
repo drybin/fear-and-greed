@@ -23,6 +23,33 @@ const (
 	StrategyVersion       = "v1.0.0"
 )
 
+// RegimeMode controls which frozen market filters can enable relative-strength
+// allocation. It is an experiment input, never a runtime tuning knob.
+type RegimeMode string
+
+const (
+	RegimeModeBoth    RegimeMode = "both"
+	RegimeModeBTCEMA  RegimeMode = "btc-ema"
+	RegimeModeBreadth RegimeMode = "breadth"
+	RegimeModeNone    RegimeMode = "none"
+)
+
+func (m RegimeMode) Validate() error {
+	switch m {
+	case "", RegimeModeBoth, RegimeModeBTCEMA, RegimeModeBreadth, RegimeModeNone:
+		return nil
+	default:
+		return fmt.Errorf("portfolio: invalid regime mode %q", m)
+	}
+}
+
+func (m RegimeMode) normalized() RegimeMode {
+	if m == "" {
+		return RegimeModeBoth
+	}
+	return m
+}
+
 type SignalArtifactRef struct {
 	Path       string                          `json:"path"`
 	SHA256     protocolv2.SHA256Hex            `json:"sha256"`
@@ -55,6 +82,7 @@ type RelativeStrengthConfig struct {
 	BTCEMADays         int          `json:"btc_ema_days"`
 	MinPositiveBreadth float64      `json:"min_positive_breadth"`
 	RebalanceWeekday   time.Weekday `json:"rebalance_weekday"`
+	RegimeMode         RegimeMode   `json:"regime_mode"`
 }
 
 type Gates struct {
@@ -84,7 +112,8 @@ type Manifest struct {
 	Gates                  Gates                     `json:"gates"`
 }
 
-func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool) (Manifest, error) {
+func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool, regimeMode RegimeMode) (Manifest, error) {
+	regimeMode = regimeMode.normalized()
 	m := Manifest{
 		SchemaVersion: ManifestSchemaVersion, ImplementationRevision: revision,
 		SourceExperiment: source.ID, SourceManifestHash: source.Hash, Diagnostic: diagnostic,
@@ -93,7 +122,7 @@ func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool)
 		BaseCosts:        CostProfile{CommissionBPS: source.Execution.CommissionBPS, SlippageBPS: source.Execution.SlippageBPS},
 		StressCosts:      CostProfile{CommissionBPS: source.Execution.CommissionBPS, SlippageBPS: 15},
 		Limits:           Limits{InitialCapital: source.Risk.InitialEquity, RiskPerTradePercent: 1, MaxPositionPercent: 20, MaxPositions: 5, MaxAggregateRiskPct: 5},
-		RelativeStrength: RelativeStrengthConfig{ReturnLookbackDays: 90, VolatilityDays: 30, ATRDays: 20, StopATR: 2, TopK: 5, ExitRank: 10, BTCEMADays: 200, MinPositiveBreadth: .5, RebalanceWeekday: time.Monday},
+		RelativeStrength: RelativeStrengthConfig{ReturnLookbackDays: 90, VolatilityDays: 30, ATRDays: 20, StopATR: 2, TopK: 5, ExitRank: 10, BTCEMADays: 200, MinPositiveBreadth: .5, RebalanceWeekday: time.Monday, RegimeMode: regimeMode},
 		Gates:            Gates{MinNetReturn: 0, MaxDrawdown: .25, MinExcessVsBTC: -.05, MinExcessVsEqualWeight: -.05, MaxContribution: .4, RequireStressPositive: true},
 	}
 	if err := m.freeze(); err != nil {
@@ -173,7 +202,7 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("portfolio: invalid limits")
 	}
 	r := m.RelativeStrength
-	if r.ReturnLookbackDays < 2 || r.VolatilityDays < 2 || r.ATRDays < 2 || !positive(r.StopATR) || r.TopK < 1 || r.ExitRank < r.TopK || r.BTCEMADays < 2 || r.MinPositiveBreadth < 0 || r.MinPositiveBreadth > 1 || r.RebalanceWeekday < time.Sunday || r.RebalanceWeekday > time.Saturday {
+	if r.ReturnLookbackDays < 2 || r.VolatilityDays < 2 || r.ATRDays < 2 || !positive(r.StopATR) || r.TopK < 1 || r.ExitRank < r.TopK || r.BTCEMADays < 2 || r.MinPositiveBreadth < 0 || r.MinPositiveBreadth > 1 || r.RebalanceWeekday < time.Sunday || r.RebalanceWeekday > time.Saturday || r.RegimeMode.Validate() != nil {
 		return fmt.Errorf("portfolio: invalid relative-strength config")
 	}
 	if !finite(m.Gates.MinNetReturn) || !finite(m.Gates.MaxDrawdown) || m.Gates.MaxDrawdown <= 0 || !finite(m.Gates.MaxContribution) || m.Gates.MaxContribution <= 0 || m.Gates.MaxContribution > 1 {

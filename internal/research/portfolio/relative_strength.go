@@ -67,6 +67,9 @@ func AggregateDaily(minutes []model.Candle) ([]DailyBar, error) {
 }
 
 func RelativeStrengthRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg RelativeStrengthConfig, evaluationStart, evaluationEnd time.Time) ([]Rebalance, error) {
+	if err := cfg.RegimeMode.Validate(); err != nil {
+		return nil, err
+	}
 	btc := bars["BTCUSDT"]
 	if len(btc) == 0 {
 		return nil, fmt.Errorf("portfolio: BTCUSDT is required for regime detection")
@@ -111,7 +114,7 @@ func RelativeStrengthRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg Relat
 			ranking[i].Rank = i + 1
 		}
 		breadth := float64(positiveReturns) / float64(len(ranking))
-		regime := btcAbove && breadth >= cfg.MinPositiveBreadth
+		regime := regimeEnabled(cfg.RegimeMode, btcAbove, breadth >= cfg.MinPositiveBreadth)
 		event := Rebalance{FillTime: fill.Time, RegimeOn: regime, BTCAboveEMA: btcAbove, PositiveBreadth: breadth, Ranking: ranking, Retain: map[protocolv2.Symbol]bool{}}
 		if regime {
 			for _, ranked := range ranking {
@@ -126,6 +129,21 @@ func RelativeStrengthRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg Relat
 		events = append(events, event)
 	}
 	return events, nil
+}
+
+func regimeEnabled(mode RegimeMode, btcAboveEMA, breadthPositive bool) bool {
+	switch mode.normalized() {
+	case RegimeModeBoth:
+		return btcAboveEMA && breadthPositive
+	case RegimeModeBTCEMA:
+		return btcAboveEMA
+	case RegimeModeBreadth:
+		return breadthPositive
+	case RegimeModeNone:
+		return true
+	default:
+		return false
+	}
 }
 
 func completedBefore(in []DailyBar, t time.Time) []DailyBar {
