@@ -25,6 +25,16 @@ SUITE=research-v3 ./scripts/run_research_v2.sh
 Это создаст новый manifest и experiment ID. Relative strength намеренно не
 входит в этот прогон: он требует следующего portfolio-исследования.
 
+Для отдельной проверки новой RSI trend mean-reversion гипотезы используйте
+изолированный suite `rsi-mean-reversion-v1`. Он не меняет старый
+`mean-reversion-v1`: вход требует, чтобы RSI(14) вернулся выше 35 после
+перепроданности, при этом полностью закрытый 4h бар подтверждает растущую
+EMA200; цель -- 1h EMA20, тайм-аут -- 48 часов.
+
+```bash
+SUITE=rsi-mean-reversion-v1 ./scripts/run_research_v2.sh
+```
+
 ## Portfolio: ablation режимов рынка
 
 После первого диагностического результата relative strength сравнивается без

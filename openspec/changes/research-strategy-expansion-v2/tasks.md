@@ -22,10 +22,10 @@
 
 ## 4. RSI trend mean reversion
 
-- [ ] 4.1 Implement causal 4h trend state and 1h RSI oversold state
-- [ ] 4.2 Implement recovery cross, ATR stop, target, and time exit
-- [ ] 4.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
-- [ ] 4.4 Add metadata, registry, serialization, and common-contract tests
+- [x] 4.1 Implement causal 4h trend state and 1h RSI oversold state
+- [x] 4.2 Implement recovery cross, ATR stop, target, and time exit
+- [x] 4.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
+- [x] 4.4 Add metadata, registry, serialization, and common-contract tests
 
 ## 5. Bollinger range reversion
 

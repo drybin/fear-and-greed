@@ -21,6 +21,7 @@ const (
 	BreakoutRetestLongCode              protocolv2.StrategyCode = "breakout-retest-long-v2"
 	VolatilityCompressionBreakoutV2Code protocolv2.StrategyCode = "volatility-compression-breakout-v2"
 	MeanReversionCode                   protocolv2.StrategyCode = "mean-reversion-v1"
+	RSIMeanReversionLongCode            protocolv2.StrategyCode = "rsi-mean-reversion-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -139,6 +140,10 @@ func DailyLowZoneV12() []Adapter { return []Adapter{dailyLowZoneV12()} }
 // percent take-profit calculated from the actual next-bar fill.
 func DailyLowZoneV13() []Adapter { return []Adapter{dailyLowZoneV13()} }
 
+// RSIMeanReversionV1 isolates the frozen trend-conditioned recovery
+// hypothesis from the earlier research-v3 mean-reversion implementation.
+func RSIMeanReversionV1() []Adapter { return []Adapter{rsiMeanReversionV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -186,7 +191,29 @@ func All() []Adapter {
 	all := append([]Adapter{}, Core()...)
 	all = append(all, ResearchV3()...)
 	all = append(all, DailyLowZoneV12()...)
-	return append(all, DailyLowZoneV13()...)
+	all = append(all, DailyLowZoneV13()...)
+	return append(all, RSIMeanReversionV1()...)
+}
+
+func rsiMeanReversionV1() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "rsi25-stop12", Values: map[string]any{"oversold_rsi": 25.0, "stop_atr": 1.2}},
+		{ID: "rsi25-stop16", Values: map[string]any{"oversold_rsi": 25.0, "stop_atr": 1.6}},
+		{ID: "rsi30-stop12", Values: map[string]any{"oversold_rsi": 30.0, "stop_atr": 1.2}},
+		{ID: "rsi30-stop16", Values: map[string]any{"oversold_rsi": 30.0, "stop_atr": 1.6}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(RSIMeanReversionLongCode, "v1.0.0"), Name: "RSI Trend Mean Reversion v1", Timeframe: "1h", WarmupBars: 880, Description: "1h RSI oversold recovery below EMA20 within a causal rising 4h EMA200 trend; target EMA20 or exit after 48h."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.RSIMeanReversionV1Signals(candles, strategy.RSIMeanReversionV1Params{OversoldRSI: candidate.Values["oversold_rsi"].(float64), StopATR: candidate.Values["stop_atr"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown RSI mean-reversion candidate %q", id)
+		},
+	}
 }
 
 // RegisterCore installs exactly the four scope-approved adapters.
