@@ -140,14 +140,18 @@ type Manifest struct {
 	Gates                  Gates                     `json:"gates"`
 }
 
-func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool, regimeMode RegimeMode, entryMode EntryMode) (Manifest, error) {
+func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool, regimeMode RegimeMode, entryMode EntryMode, requestedRange *protocolv2.TimeRange) (Manifest, error) {
 	regimeMode = regimeMode.normalized()
 	entryMode = entryMode.normalized()
+	evaluationRange, err := evaluationRange(source, requestedRange)
+	if err != nil {
+		return Manifest{}, err
+	}
 	m := Manifest{
 		SchemaVersion: ManifestSchemaVersion, ImplementationRevision: revision,
 		SourceExperiment: source.ID, SourceManifestHash: source.Hash, Diagnostic: diagnostic,
 		Universe:         source.Universe,
-		Range:            protocolv2.TimeRange{Start: source.Schedule.Test.Start, End: source.Schedule.LockedHoldout.Start},
+		Range:            evaluationRange,
 		BaseCosts:        CostProfile{CommissionBPS: source.Execution.CommissionBPS, SlippageBPS: source.Execution.SlippageBPS},
 		StressCosts:      CostProfile{CommissionBPS: source.Execution.CommissionBPS, SlippageBPS: 15},
 		Limits:           Limits{InitialCapital: source.Risk.InitialEquity, RiskPerTradePercent: 1, MaxPositionPercent: 20, MaxPositions: 5, MaxAggregateRiskPct: 5},
@@ -158,6 +162,31 @@ func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool,
 		return Manifest{}, err
 	}
 	return m, nil
+}
+
+// evaluationRange keeps portfolio diagnostics within the source experiment's
+// development horizon. A caller can narrow that horizon, never open holdout.
+func evaluationRange(source manifest.Manifest, requested *protocolv2.TimeRange) (protocolv2.TimeRange, error) {
+	horizon := protocolv2.TimeRange{Start: source.Schedule.Train.Start, End: source.Schedule.LockedHoldout.Start}
+	if err := horizon.Validate(); err != nil {
+		return protocolv2.TimeRange{}, fmt.Errorf("portfolio: invalid source development horizon: %w", err)
+	}
+	if !horizon.Start.Before(horizon.End) {
+		return protocolv2.TimeRange{}, fmt.Errorf("portfolio: source development horizon must be non-empty")
+	}
+	if requested == nil {
+		return protocolv2.TimeRange{Start: source.Schedule.Test.Start, End: source.Schedule.LockedHoldout.Start}, nil
+	}
+	if err := requested.Validate(); err != nil {
+		return protocolv2.TimeRange{}, fmt.Errorf("portfolio: invalid evaluation range: %w", err)
+	}
+	if !requested.Start.Before(requested.End) {
+		return protocolv2.TimeRange{}, fmt.Errorf("portfolio: evaluation range must be non-empty")
+	}
+	if !horizon.ContainsRange(*requested) {
+		return protocolv2.TimeRange{}, fmt.Errorf("portfolio: evaluation range %s to %s is outside source development horizon %s to %s", requested.Start.Format("2006-01-02"), requested.End.Format("2006-01-02"), horizon.Start.Format("2006-01-02"), horizon.End.Format("2006-01-02"))
+	}
+	return *requested, nil
 }
 
 func (m *Manifest) freeze() error {

@@ -12,6 +12,8 @@ BIN="${BIN:-$ROOT/bin/cli}"
 DATA_DIR="${DATA_DIR:-$ROOT/data/research-v2}"
 REGIME_MODES="${REGIME_MODES:-both btc-ema breadth none}"
 ENTRY_MODE="${ENTRY_MODE:-weekly-open}"
+START="${START:-}"
+END="${END:-}"
 VERIFY_DOCKER_IMAGE="${VERIFY_DOCKER_IMAGE:-golang:1.22}"
 REVISION="$(git rev-parse --short=12 HEAD)"
 RUN_ROOT="${RUN_ROOT:-$DATA_DIR/portfolio-runs/regime-ablation-$REVISION}"
@@ -37,6 +39,15 @@ case "$ENTRY_MODE" in
     exit 1
     ;;
 esac
+if [[ -n "$START" || -n "$END" ]]; then
+  if [[ -z "$START" || -z "$END" ]]; then
+    echo "ERROR: set both START and END for a custom evaluation window." >&2
+    exit 1
+  fi
+  PREPARE_RANGE_ARGS=(--start "$START" --end "$END")
+else
+  PREPARE_RANGE_ARGS=()
+fi
 
 mkdir -p "$RUN_ROOT"
 
@@ -50,7 +61,9 @@ run_logged() {
 }
 
 LOG_FILE="$RUN_ROOT/workflow.log"
-run_logged "$LOG_FILE" docker run --rm -v "$ROOT:/app" -w /app "$VERIFY_DOCKER_IMAGE" go test ./internal/research/... ./internal/strategy/...
+if [[ "${SKIP_VERIFY:-0}" != "1" ]]; then
+  run_logged "$LOG_FILE" docker run --rm -v "$ROOT:/app" -w /app "$VERIFY_DOCKER_IMAGE" go test ./internal/research/... ./internal/strategy/...
+fi
 
 for mode in $REGIME_MODES; do
   case "$mode" in
@@ -69,6 +82,7 @@ for mode in $REGIME_MODES; do
     --manifest "$MANIFEST" \
     --regime-mode "$mode" \
     --entry-mode "$ENTRY_MODE" \
+    "${PREPARE_RANGE_ARGS[@]}" \
     --workdir "$ROOT"
   run_logged "$LOG_FILE" env GOMEMLIMIT=512MiB GOGC=20 "$BIN" research-validate portfolio-run \
     --manifest "$MANIFEST" \

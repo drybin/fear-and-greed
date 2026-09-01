@@ -196,6 +196,23 @@ func TestDecisionGatesAndDiagnosticStatus(t *testing.T) {
 	require.Contains(t, decision.FailedGates, "max_drawdown")
 }
 
+func TestEvaluationRangeCannotOpenLockedHoldout(t *testing.T) {
+	start := time.Date(2024, 11, 9, 0, 0, 0, 0, time.UTC)
+	source := manifest.Manifest{Schedule: manifest.Schedule{
+		Train:         protocolv2.TimeRange{Start: start, End: start.AddDate(0, 9, 0)},
+		LockedHoldout: protocolv2.TimeRange{Start: start.AddDate(1, 6, 0), End: start.AddDate(1, 9, 0)},
+	}}
+
+	requested := protocolv2.TimeRange{Start: start.AddDate(0, 3, 0), End: start.AddDate(0, 6, 0)}
+	got, err := evaluationRange(source, &requested)
+	require.NoError(t, err)
+	require.Equal(t, requested, got)
+
+	requested.End = source.Schedule.LockedHoldout.End
+	_, err = evaluationRange(source, &requested)
+	require.ErrorContains(t, err, "outside source development horizon")
+}
+
 func TestWorkflowVerifiesInputsAndWritesReproducibleReport(t *testing.T) {
 	dir := t.TempDir()
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -226,6 +243,7 @@ func TestWorkflowVerifiesInputsAndWritesReproducibleReport(t *testing.T) {
 	require.NoError(t, err)
 	require.FileExists(t, output)
 	require.Equal(t, m.ID, report.ExperimentID)
+	require.Equal(t, m.Range, report.Range)
 	require.NotEmpty(t, report.Rebalances)
 	require.Equal(t, "rs-90d-vol30-top5-none-weekly-open", report.Candidate)
 	require.Equal(t, "observe", report.Decision.Status)

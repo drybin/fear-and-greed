@@ -44,6 +44,7 @@ type Report struct {
 	ExperimentID  protocolv2.ExperimentID `json:"experiment_id"`
 	ManifestHash  protocolv2.SHA256Hex    `json:"manifest_hash"`
 	GeneratedAt   time.Time               `json:"generated_at"`
+	Range         protocolv2.TimeRange    `json:"range"`
 	Strategy      protocolv2.StrategyRef  `json:"strategy"`
 	Candidate     string                  `json:"candidate"`
 	Diagnostic    bool                    `json:"diagnostic"`

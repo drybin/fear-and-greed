@@ -48,8 +48,14 @@ func preparePortfolioCommand() *cli.Command {
 			&cli.BoolFlag{Name: "diagnostic", Value: true, Usage: "allow a portfolio-native experiment without research-pass signal artifacts"},
 			&cli.StringFlag{Name: "regime-mode", Value: string(portfolio.RegimeModeBoth), Usage: "relative-strength regime: both, btc-ema, breadth, or none"},
 			&cli.StringFlag{Name: "entry-mode", Value: string(portfolio.EntryModeWeeklyOpen), Usage: "relative-strength entry: weekly-open or trend-pullback"},
+			&cli.StringFlag{Name: "start", Usage: "optional inclusive UTC evaluation date (YYYY-MM-DD); requires --end"},
+			&cli.StringFlag{Name: "end", Usage: "optional exclusive UTC evaluation date (YYYY-MM-DD); requires --start"},
 		},
 		Action: func(c *cli.Context) error {
+			evaluationRange, err := portfolioRange(c.String("start"), c.String("end"))
+			if err != nil {
+				return err
+			}
 			source, err := manifest.GitRevision(c.String("workdir"))
 			if err != nil {
 				return err
@@ -57,7 +63,7 @@ func preparePortfolioCommand() *cli.Command {
 			if source.Dirty {
 				return fmt.Errorf("portfolio prepare requires a clean worktree")
 			}
-			m, err := portfolio.Prepare(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"), portfolio.RegimeMode(c.String("regime-mode")), portfolio.EntryMode(c.String("entry-mode")))
+			m, err := portfolio.Prepare(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"), portfolio.RegimeMode(c.String("regime-mode")), portfolio.EntryMode(c.String("entry-mode")), evaluationRange)
 			if err != nil {
 				return err
 			}
@@ -65,6 +71,28 @@ func preparePortfolioCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+func portfolioRange(startRaw, endRaw string) (*protocolv2.TimeRange, error) {
+	if startRaw == "" && endRaw == "" {
+		return nil, nil
+	}
+	if startRaw == "" || endRaw == "" {
+		return nil, fmt.Errorf("portfolio range requires both --start and --end")
+	}
+	start, err := time.ParseInLocation("2006-01-02", startRaw, time.UTC)
+	if err != nil {
+		return nil, fmt.Errorf("invalid portfolio --start: %w", err)
+	}
+	end, err := time.ParseInLocation("2006-01-02", endRaw, time.UTC)
+	if err != nil {
+		return nil, fmt.Errorf("invalid portfolio --end: %w", err)
+	}
+	rangeValue, err := protocolv2.NewTimeRange(start, end)
+	if err != nil {
+		return nil, fmt.Errorf("invalid portfolio evaluation range: %w", err)
+	}
+	return &rangeValue, nil
 }
 
 func runPortfolioCommand() *cli.Command {

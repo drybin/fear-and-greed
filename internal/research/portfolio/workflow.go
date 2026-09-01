@@ -16,7 +16,7 @@ import (
 	"github.com/drybin/fear-and-greed/internal/research/protocolv2"
 )
 
-func Prepare(sourcePath, outputPath, revision string, diagnostic bool, regimeMode RegimeMode, entryMode EntryMode) (Manifest, error) {
+func Prepare(sourcePath, outputPath, revision string, diagnostic bool, regimeMode RegimeMode, entryMode EntryMode, requestedRange *protocolv2.TimeRange) (Manifest, error) {
 	raw, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("portfolio: read source manifest: %w", err)
@@ -25,7 +25,7 @@ func Prepare(sourcePath, outputPath, revision string, diagnostic bool, regimeMod
 	if err != nil {
 		return Manifest{}, err
 	}
-	m, err := DefaultManifest(source, revision, diagnostic, regimeMode, entryMode)
+	m, err := DefaultManifest(source, revision, diagnostic, regimeMode, entryMode, requestedRange)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -85,6 +85,7 @@ func Run(ctx context.Context, m Manifest, candleDir, outputPath string) (Report,
 		ExperimentID:  m.ID,
 		ManifestHash:  m.Hash,
 		GeneratedAt:   m.Range.End,
+		Range:         m.Range,
 		Strategy:      relativeStrengthStrategy(m.RelativeStrength.EntryMode),
 		Candidate:     relativeStrengthCandidate(m.RelativeStrength.RegimeMode, m.RelativeStrength.EntryMode),
 		Diagnostic:    m.Diagnostic,
@@ -130,7 +131,7 @@ func (r Report) Validate() error {
 	if err := r.Strategy.Validate(); err != nil {
 		return err
 	}
-	if r.GeneratedAt.IsZero() || r.Candidate == "" {
+	if r.GeneratedAt.IsZero() || r.Candidate == "" || r.Range.Validate() != nil || !r.Range.Start.Before(r.Range.End) {
 		return fmt.Errorf("portfolio: incomplete report identity")
 	}
 	if r.Decision.Status != "portfolio-pass" && r.Decision.Status != "observe" && r.Decision.Status != "reject" {

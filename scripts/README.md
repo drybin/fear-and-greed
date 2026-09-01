@@ -63,6 +63,25 @@ RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0
 `data/research-v2/portfolio-runs/breadth-pullback-<git-sha>/`; текущий
 baseline и ablation не перезаписываются.
 
+## Portfolio: breadth pullback walk-forward
+
+После одного диагностического прогона параметры кандидата больше не меняются.
+Этот сценарий запускает ровно тот же `breadth + trend-pullback` на пяти
+непересекающихся development-окнах и не открывает locked holdout
+`2026-05-03`--`2026-08-01`:
+
+```bash
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  ./scripts/run_portfolio_breadth_pullback_walk_forward.sh
+```
+
+Сначала нужен чистый закоммиченный worktree и свежий CLI (`make build-cli`).
+Каждое окно получает собственные immutable manifest и report, а краткая
+машиночитаемая сводка записывается в
+`data/research-v2/portfolio-runs/breadth-pullback-walk-forward-<git-sha>/summary.json`.
+CLI фиксирует границы в manifest через `--start YYYY-MM-DD --end YYYY-MM-DD`;
+он отклоняет диапазон за пределами development-горизонта исходного исследования.
+
 Незавершённые run-директории старых revisions можно сначала посмотреть, а
 затем явно удалить:
 
