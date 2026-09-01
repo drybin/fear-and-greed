@@ -11,6 +11,7 @@ cd "$ROOT"
 BIN="${BIN:-$ROOT/bin/cli}"
 DATA_DIR="${DATA_DIR:-$ROOT/data/research-v2}"
 REGIME_MODES="${REGIME_MODES:-both btc-ema breadth none}"
+ENTRY_MODE="${ENTRY_MODE:-weekly-open}"
 VERIFY_DOCKER_IMAGE="${VERIFY_DOCKER_IMAGE:-golang:1.22}"
 REVISION="$(git rev-parse --short=12 HEAD)"
 RUN_ROOT="${RUN_ROOT:-$DATA_DIR/portfolio-runs/regime-ablation-$REVISION}"
@@ -29,6 +30,13 @@ if [[ ! -f "$RESEARCH_MANIFEST" ]]; then
   echo "ERROR: source manifest not found: $RESEARCH_MANIFEST" >&2
   exit 1
 fi
+case "$ENTRY_MODE" in
+  weekly-open|trend-pullback) ;;
+  *)
+    echo "ERROR: unsupported entry mode: $ENTRY_MODE" >&2
+    exit 1
+    ;;
+esac
 
 mkdir -p "$RUN_ROOT"
 
@@ -60,6 +68,7 @@ for mode in $REGIME_MODES; do
     --research-manifest "$RESEARCH_MANIFEST" \
     --manifest "$MANIFEST" \
     --regime-mode "$mode" \
+    --entry-mode "$ENTRY_MODE" \
     --workdir "$ROOT"
   run_logged "$LOG_FILE" env GOMEMLIMIT=512MiB GOGC=20 "$BIN" research-validate portfolio-run \
     --manifest "$MANIFEST" \

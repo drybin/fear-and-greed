@@ -71,6 +71,38 @@ func TestRegimeModesEnableOnlyTheirFrozenFilters(t *testing.T) {
 	require.Error(t, RegimeMode("unknown").Validate())
 }
 
+func TestTrendPullbackRequiresPriceNearItsCompletedEMA(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	series := syntheticBars(start, 40, 100, .001)
+	cfg := RelativeStrengthConfig{ReturnLookbackDays: 10, VolatilityDays: 5, ATRDays: 5, StopATR: 2, TopK: 1, ExitRank: 2, BTCEMADays: 10, MinPositiveBreadth: .5, RebalanceWeekday: time.Monday, EntryMode: EntryModeTrendPullback, PullbackEMADays: 5, MaxEntryDistanceATR: .5}
+
+	near, ok := score("AAAUSDT", series, cfg)
+	require.True(t, ok)
+	require.True(t, near.EntryEligible)
+	require.Greater(t, near.MaxEntryPrice, 0.0)
+
+	extended := append([]DailyBar(nil), series...)
+	extended[len(extended)-1].Close *= 1.10
+	extended[len(extended)-1].High = extended[len(extended)-1].Close
+	far, ok := score("AAAUSDT", extended, cfg)
+	require.True(t, ok)
+	require.False(t, far.EntryEligible)
+
+	require.Equal(t, protocolv2.StrategyCode("relative-strength-pullback-v1"), relativeStrengthStrategy(EntryModeTrendPullback).Code)
+}
+
+func TestEngineRejectsPullbackEntryThatGapsAboveFrozenCap(t *testing.T) {
+	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{"AAAUSDT": {{Time: day, Open: 101, High: 102, Low: 99, Close: 100}}}
+	event := Rebalance{FillTime: day, RegimeOn: true, Targets: []Rank{{Symbol: "AAAUSDT", Rank: 1, StopDistance: 5, EntryEligible: true, MaxEntryPrice: 100}}}
+	limits := Limits{InitialCapital: 10_000, RiskPerTradePercent: 1, MaxPositionPercent: 20, MaxPositions: 1, MaxAggregateRiskPct: 5}
+	result, err := (Engine{Limits: limits}).Run(bars, []Rebalance{event}, day, day.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result.Decisions, 1)
+	require.False(t, result.Decisions[0].Accepted)
+	require.Equal(t, "entry_extension", result.Decisions[0].Reason)
+}
+
 func TestEngineEnforcesSlotsAndReconcilesCash(t *testing.T) {
 	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
 	bars := map[protocolv2.Symbol][]DailyBar{}
@@ -185,7 +217,7 @@ func TestWorkflowVerifiesInputsAndWritesReproducibleReport(t *testing.T) {
 		BaseCosts:              CostProfile{CommissionBPS: 10, SlippageBPS: 5},
 		StressCosts:            CostProfile{CommissionBPS: 10, SlippageBPS: 15},
 		Limits:                 Limits{InitialCapital: 10_000, RiskPerTradePercent: 1, MaxPositionPercent: 20, MaxPositions: 2, MaxAggregateRiskPct: 5},
-		RelativeStrength:       RelativeStrengthConfig{ReturnLookbackDays: 3, VolatilityDays: 3, ATRDays: 3, StopATR: 2, TopK: 1, ExitRank: 2, BTCEMADays: 3, MinPositiveBreadth: 0, RebalanceWeekday: time.Monday, RegimeMode: RegimeModeNone},
+		RelativeStrength:       RelativeStrengthConfig{ReturnLookbackDays: 3, VolatilityDays: 3, ATRDays: 3, StopATR: 2, TopK: 1, ExitRank: 2, BTCEMADays: 3, MinPositiveBreadth: 0, RebalanceWeekday: time.Monday, RegimeMode: RegimeModeNone, EntryMode: EntryModeWeeklyOpen, PullbackEMADays: 3, MaxEntryDistanceATR: .5},
 		Gates:                  Gates{MinNetReturn: -1, MaxDrawdown: 1, MinExcessVsBTC: -1, MinExcessVsEqualWeight: -1, MaxContribution: 1},
 	}
 	require.NoError(t, m.freeze())
@@ -195,7 +227,7 @@ func TestWorkflowVerifiesInputsAndWritesReproducibleReport(t *testing.T) {
 	require.FileExists(t, output)
 	require.Equal(t, m.ID, report.ExperimentID)
 	require.NotEmpty(t, report.Rebalances)
-	require.Equal(t, "rs-90d-vol30-top5-none", report.Candidate)
+	require.Equal(t, "rs-90d-vol30-top5-none-weekly-open", report.Candidate)
 	require.Equal(t, "observe", report.Decision.Status)
 	_, err = Run(context.Background(), m, dir, output)
 	require.NoError(t, err, "identical reruns must reuse the immutable artifact")

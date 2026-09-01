@@ -46,6 +46,23 @@ CSV повторно не загружаются. Скрипт запускае�
 сверяет fingerprint каждого входного CSV перед каждым вариантом. По умолчанию
 отчёты будут лежать в `data/research-v2/portfolio-runs/regime-ablation-<git-sha>/`.
 
+## Portfolio: breadth pullback
+
+Следующий независимый кандидат сохраняет лучший защитный режим `breadth`, но
+меняет сам вход: лидер cross-sectional ranking покупается только когда его
+последняя завершённая дневная цена выше EMA20 и находится не дальше `0.5 ATR`
+от неё. Открытие следующего дня выше этого frozen лимита отклоняется как
+`entry_extension`.
+
+```bash
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  ./scripts/run_portfolio_breadth_pullback.sh
+```
+
+Результат сохраняется отдельно в
+`data/research-v2/portfolio-runs/breadth-pullback-<git-sha>/`; текущий
+baseline и ablation не перезаписываются.
+
 Незавершённые run-директории старых revisions можно сначала посмотреть, а
 затем явно удалить:
 

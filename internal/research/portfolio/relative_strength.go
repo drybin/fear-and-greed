@@ -17,12 +17,14 @@ type DailyBar struct {
 }
 
 type Rank struct {
-	Symbol       protocolv2.Symbol `json:"symbol"`
-	Rank         int               `json:"rank"`
-	Score        float64           `json:"score"`
-	Return       float64           `json:"return"`
-	Volatility   float64           `json:"volatility"`
-	StopDistance float64           `json:"stop_distance"`
+	Symbol        protocolv2.Symbol `json:"symbol"`
+	Rank          int               `json:"rank"`
+	Score         float64           `json:"score"`
+	Return        float64           `json:"return"`
+	Volatility    float64           `json:"volatility"`
+	StopDistance  float64           `json:"stop_distance"`
+	EntryEligible bool              `json:"entry_eligible"`
+	MaxEntryPrice float64           `json:"max_entry_price,omitempty"`
 }
 
 type Rebalance struct {
@@ -68,6 +70,9 @@ func AggregateDaily(minutes []model.Candle) ([]DailyBar, error) {
 
 func RelativeStrengthRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg RelativeStrengthConfig, evaluationStart, evaluationEnd time.Time) ([]Rebalance, error) {
 	if err := cfg.RegimeMode.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.EntryMode.Validate(); err != nil {
 		return nil, err
 	}
 	btc := bars["BTCUSDT"]
@@ -118,7 +123,7 @@ func RelativeStrengthRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg Relat
 		event := Rebalance{FillTime: fill.Time, RegimeOn: regime, BTCAboveEMA: btcAbove, PositiveBreadth: breadth, Ranking: ranking, Retain: map[protocolv2.Symbol]bool{}}
 		if regime {
 			for _, ranked := range ranking {
-				if ranked.Rank <= cfg.TopK {
+				if ranked.Rank <= cfg.TopK && ranked.EntryEligible {
 					event.Targets = append(event.Targets, ranked)
 				}
 				if ranked.Rank <= cfg.ExitRank {
@@ -153,6 +158,9 @@ func completedBefore(in []DailyBar, t time.Time) []DailyBar {
 
 func score(symbol protocolv2.Symbol, h []DailyBar, cfg RelativeStrengthConfig) (Rank, bool) {
 	need := maxInt(cfg.ReturnLookbackDays+1, cfg.VolatilityDays+1, cfg.ATRDays+1)
+	if cfg.EntryMode.normalized() == EntryModeTrendPullback {
+		need = maxInt(need, cfg.PullbackEMADays)
+	}
 	if len(h) < need {
 		return Rank{}, false
 	}
@@ -177,7 +185,14 @@ func score(symbol protocolv2.Symbol, h []DailyBar, cfg RelativeStrengthConfig) (
 	if atr <= 0 || !finite(atr) {
 		return Rank{}, false
 	}
-	return Rank{Symbol: symbol, Score: protocolv2.RoundMetric(ret / vol), Return: protocolv2.RoundMetric(ret), Volatility: protocolv2.RoundMetric(vol), StopDistance: protocolv2.RoundPrice(cfg.StopATR * atr)}, true
+	rank := Rank{Symbol: symbol, Score: protocolv2.RoundMetric(ret / vol), Return: protocolv2.RoundMetric(ret), Volatility: protocolv2.RoundMetric(vol), StopDistance: protocolv2.RoundPrice(cfg.StopATR * atr), EntryEligible: true}
+	if cfg.EntryMode.normalized() == EntryModeTrendPullback {
+		entryEMA := emaClose(h[len(h)-cfg.PullbackEMADays:], cfg.PullbackEMADays)
+		maxEntry := protocolv2.RoundPrice(entryEMA + cfg.MaxEntryDistanceATR*atr)
+		rank.EntryEligible = last > entryEMA && last <= maxEntry
+		rank.MaxEntryPrice = maxEntry
+	}
+	return rank, true
 }
 
 func emaClose(in []DailyBar, period int) float64 {

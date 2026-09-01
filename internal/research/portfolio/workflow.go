@@ -16,7 +16,7 @@ import (
 	"github.com/drybin/fear-and-greed/internal/research/protocolv2"
 )
 
-func Prepare(sourcePath, outputPath, revision string, diagnostic bool, regimeMode RegimeMode) (Manifest, error) {
+func Prepare(sourcePath, outputPath, revision string, diagnostic bool, regimeMode RegimeMode, entryMode EntryMode) (Manifest, error) {
 	raw, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("portfolio: read source manifest: %w", err)
@@ -25,7 +25,7 @@ func Prepare(sourcePath, outputPath, revision string, diagnostic bool, regimeMod
 	if err != nil {
 		return Manifest{}, err
 	}
-	m, err := DefaultManifest(source, revision, diagnostic, regimeMode)
+	m, err := DefaultManifest(source, revision, diagnostic, regimeMode, entryMode)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -85,18 +85,16 @@ func Run(ctx context.Context, m Manifest, candleDir, outputPath string) (Report,
 		ExperimentID:  m.ID,
 		ManifestHash:  m.Hash,
 		GeneratedAt:   m.Range.End,
-		Strategy: protocolv2.StrategyRef{
-			Code: protocolv2.StrategyCode(StrategyCode), Version: protocolv2.StrategyVersion(StrategyVersion),
-		},
-		Candidate:    relativeStrengthCandidate(m.RelativeStrength.RegimeMode),
-		Diagnostic:   m.Diagnostic,
-		Base:         baseMetrics,
-		Stress:       stressMetrics,
-		Benchmarks:   benchmarks,
-		Decision:     EvaluateDecision(baseMetrics, stressMetrics, benchmarks, m.Gates, m.Diagnostic),
-		Rebalances:   rebalances,
-		BaseResult:   baseResult,
-		StressResult: stressResult,
+		Strategy:      relativeStrengthStrategy(m.RelativeStrength.EntryMode),
+		Candidate:     relativeStrengthCandidate(m.RelativeStrength.RegimeMode, m.RelativeStrength.EntryMode),
+		Diagnostic:    m.Diagnostic,
+		Base:          baseMetrics,
+		Stress:        stressMetrics,
+		Benchmarks:    benchmarks,
+		Decision:      EvaluateDecision(baseMetrics, stressMetrics, benchmarks, m.Gates, m.Diagnostic),
+		Rebalances:    rebalances,
+		BaseResult:    baseResult,
+		StressResult:  stressResult,
 	}
 	if err := report.Validate(); err != nil {
 		return Report{}, err
@@ -107,8 +105,16 @@ func Run(ctx context.Context, m Manifest, candleDir, outputPath string) (Report,
 	return report, nil
 }
 
-func relativeStrengthCandidate(mode RegimeMode) string {
-	return "rs-90d-vol30-top5-" + string(mode.normalized())
+func relativeStrengthCandidate(regimeMode RegimeMode, entryMode EntryMode) string {
+	return "rs-90d-vol30-top5-" + string(regimeMode.normalized()) + "-" + string(entryMode.normalized())
+}
+
+func relativeStrengthStrategy(entryMode EntryMode) protocolv2.StrategyRef {
+	code := StrategyCode
+	if entryMode.normalized() == EntryModeTrendPullback {
+		code = "relative-strength-pullback-v1"
+	}
+	return protocolv2.StrategyRef{Code: protocolv2.StrategyCode(code), Version: protocolv2.StrategyVersion(StrategyVersion)}
 }
 
 func (r Report) Validate() error {

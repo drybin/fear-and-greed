@@ -167,6 +167,9 @@ func (e Engine) enter(result *EngineResult, positions map[protocolv2.Symbol]Posi
 	if len(positions) >= e.Limits.MaxPositions {
 		return "position_limit"
 	}
+	if target.MaxEntryPrice > 0 && open > target.MaxEntryPrice {
+		return "entry_extension"
+	}
 	entry := protocolv2.RoundPrice(open * (1 + e.Costs.SlippageBPS/10000))
 	if target.StopDistance <= 0 || target.StopDistance >= entry {
 		return "invalid_stop"
