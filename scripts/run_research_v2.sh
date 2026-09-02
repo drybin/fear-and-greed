@@ -101,14 +101,14 @@ if [[ "$FINAL_ONLY" != "1" ]]; then
     --output "$OUTPUT" \
     --workdir "$ROOT"
 
-  run_logged "$BIN" research-validate freeze \
+  run_logged env GOMEMLIMIT="$GOMEMLIMIT" GOGC="$GOGC" "$BIN" research-validate freeze \
     --manifest "$MANIFEST" \
     --candle-dir "$DATA_DIR" \
     --output "$OUTPUT" \
     --workdir "$ROOT"
 fi
 
-run_logged "$BIN" research-validate review \
+run_logged env GOMEMLIMIT="$GOMEMLIMIT" GOGC="$GOGC" "$BIN" research-validate review \
   --existing-development \
   --manifest "$MANIFEST" \
   --candle-dir "$DATA_DIR" \
@@ -128,7 +128,7 @@ if [[ "$ORCHESTRATION_UPGRADE" == "1" ]]; then
   FINAL_ARGS+=(--orchestration-upgrade)
 fi
 
-run_logged "$BIN" research-validate final \
+run_logged env GOMEMLIMIT="$GOMEMLIMIT" GOGC="$GOGC" "$BIN" research-validate final \
   --authorize-holdout \
   "${FINAL_ARGS[@]}" \
   --manifest "$MANIFEST" \
