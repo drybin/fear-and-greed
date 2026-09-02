@@ -22,6 +22,10 @@ ORCHESTRATION_UPGRADE="${ORCHESTRATION_UPGRADE:-0}"
 SKIP_FETCH="${SKIP_FETCH:-0}"
 SKIP_VERIFY="${SKIP_VERIFY:-0}"
 VERIFY_DOCKER_IMAGE="${VERIFY_DOCKER_IMAGE:-golang:1.22}"
+# The in-process evaluator reads large 1m candle windows. Conservative GC
+# defaults keep a VPS run below its memory limit; callers may override them.
+GOMEMLIMIT="${GOMEMLIMIT:-512MiB}"
+GOGC="${GOGC:-20}"
 
 TRACKED_STATUS="$(git status --porcelain --untracked-files=no)"
 UNTRACKED_SOURCE="$(git ls-files --others --exclude-standard -- '*.go' 'go.mod' 'go.sum')"
@@ -91,7 +95,7 @@ if [[ "$FINAL_ONLY" != "1" ]]; then
     --suite "$SUITE" \
     --workdir "$ROOT"
 
-  run_logged "$BIN" research-validate development \
+  run_logged env GOMEMLIMIT="$GOMEMLIMIT" GOGC="$GOGC" "$BIN" research-validate development \
     --manifest "$MANIFEST" \
     --candle-dir "$DATA_DIR" \
     --output "$OUTPUT" \
