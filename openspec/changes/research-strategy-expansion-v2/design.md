@@ -63,6 +63,21 @@ This hypothesis is invalidated if development fails the unchanged sample,
 profitability, stress, or robustness gates. No channel, stop, trend, or exit
 threshold may be adjusted after its development evidence is observed.
 
+### 7. Bollinger range reversion v1 is frozen as a standalone range hypothesis
+
+`bollinger-range-reversion-long-v1@v1.0.0` tests whether a completed 1h close
+that returns inside the lower Bollinger band can revert in a non-trending
+market. The preceding close must be below the lower band and ADX(14) at the
+confirmation close must not exceed `20` or `25`. The band period is fixed at
+20; the bounded grid contains only widths `2.0` and `2.5` standard deviations.
+
+The initial stop is the lower of the excursion low and entry minus 1.5 ATR(14).
+The protocol engine executes next-bar, takes half at the signal-time middle
+band, takes the remaining position at the upper band, and closes at 48 hours
+if neither exit occurs. This hypothesis is invalidated by unchanged protocol
+development gates; no indicator, stop, or target threshold will be retuned
+after development evidence is observed.
+
 ## Risks / Trade-offs
 
 - **[More hypotheses increase false discoveries]** → Bound grids and retain every losing candidate; advanced correction remains a later hardening change.

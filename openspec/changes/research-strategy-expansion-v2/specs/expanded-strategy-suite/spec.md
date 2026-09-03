@@ -35,7 +35,12 @@ trailing stops are outside this strategy version.
 - **THEN** the strategy emits a signal with ATR stop, mean-reversion target, and time exit
 
 ### Requirement: Bollinger range reversion
-`bollinger-range-reversion-long-v1` SHALL signal lower-band re-entry only when causal ADX classifies the market as a range.
+`bollinger-range-reversion-long-v1@v1.0.0` SHALL signal lower-band re-entry
+only when a completed 1h close returns inside a 20-period lower Bollinger band
+after the preceding close was below it, and causal ADX(14) classifies the
+market as a range. The bounded grid SHALL contain only ADX maxima `20`/`25`
+and band widths `2.0`/`2.5` standard deviations. The strategy SHALL use its
+fixed swing-or-1.5-ATR stop, middle/upper-band exits, and 48-hour time exit.
 
 #### Scenario: Lower-band re-entry
 - **WHEN** price closes outside the lower band and later closes back inside while ADX remains below the configured maximum

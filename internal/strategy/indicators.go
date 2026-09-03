@@ -1,6 +1,10 @@
 package strategy
 
-import "github.com/drybin/fear-and-greed/internal/domain/model"
+import (
+	"math"
+
+	"github.com/drybin/fear-and-greed/internal/domain/model"
+)
 
 func candleRange(c model.Candle) float64 {
 	return c.High - c.Low
@@ -53,6 +57,94 @@ func smaFloats(vals []float64, period int) []float64 {
 		}
 	}
 	return out
+}
+
+// BollingerBands returns SMA-based bands. All values at index i use candles
+// through i only, so a close can causally confirm a re-entry into a band.
+func BollingerBands(candles []model.Candle, period int, multiplier float64) (middle, lower, upper []float64) {
+	middle = make([]float64, len(candles))
+	lower = make([]float64, len(candles))
+	upper = make([]float64, len(candles))
+	if period < 2 || multiplier <= 0 {
+		return middle, lower, upper
+	}
+	for i := period - 1; i < len(candles); i++ {
+		var sum float64
+		for j := i - period + 1; j <= i; j++ {
+			sum += candles[j].Close
+		}
+		mean := sum / float64(period)
+		var squaredDistance float64
+		for j := i - period + 1; j <= i; j++ {
+			delta := candles[j].Close - mean
+			squaredDistance += delta * delta
+		}
+		deviation := math.Sqrt(squaredDistance / float64(period))
+		middle[i] = mean
+		lower[i] = mean - multiplier*deviation
+		upper[i] = mean + multiplier*deviation
+	}
+	return middle, lower, upper
+}
+
+// ADXWilder returns the standard Wilder ADX. It is zero until both the DI and
+// ADX smoothing windows are complete.
+func ADXWilder(candles []model.Candle, period int) []float64 {
+	out := make([]float64, len(candles))
+	if period < 2 || len(candles) < 2*period {
+		return out
+	}
+	tr := make([]float64, len(candles))
+	plusDM := make([]float64, len(candles))
+	minusDM := make([]float64, len(candles))
+	for i := 1; i < len(candles); i++ {
+		tr[i] = max3(candles[i].High-candles[i].Low, abs(candles[i].High-candles[i-1].Close), abs(candles[i].Low-candles[i-1].Close))
+		upMove := candles[i].High - candles[i-1].High
+		downMove := candles[i-1].Low - candles[i].Low
+		if upMove > downMove && upMove > 0 {
+			plusDM[i] = upMove
+		}
+		if downMove > upMove && downMove > 0 {
+			minusDM[i] = downMove
+		}
+	}
+	var smoothedTR, smoothedPlus, smoothedMinus float64
+	for i := 1; i <= period; i++ {
+		smoothedTR += tr[i]
+		smoothedPlus += plusDM[i]
+		smoothedMinus += minusDM[i]
+	}
+	dx := make([]float64, len(candles))
+	dx[period] = directionalIndex(smoothedTR, smoothedPlus, smoothedMinus)
+	for i := period + 1; i < len(candles); i++ {
+		smoothedTR = smoothedTR - smoothedTR/float64(period) + tr[i]
+		smoothedPlus = smoothedPlus - smoothedPlus/float64(period) + plusDM[i]
+		smoothedMinus = smoothedMinus - smoothedMinus/float64(period) + minusDM[i]
+		dx[i] = directionalIndex(smoothedTR, smoothedPlus, smoothedMinus)
+	}
+	firstADX := 2*period - 1
+	var sumDX float64
+	for i := period; i <= firstADX; i++ {
+		sumDX += dx[i]
+	}
+	out[firstADX] = sumDX / float64(period)
+	for i := firstADX + 1; i < len(candles); i++ {
+		out[i] = (out[i-1]*float64(period-1) + dx[i]) / float64(period)
+	}
+	return out
+}
+
+func directionalIndex(smoothedTR, smoothedPlus, smoothedMinus float64) float64 {
+	if smoothedTR <= 0 {
+		return 0
+	}
+	plusDI := 100 * smoothedPlus / smoothedTR
+	minusDI := 100 * smoothedMinus / smoothedTR
+	denominator := plusDI + minusDI
+	if denominator <= 0 {
+		return 0
+	}
+	return 100 * abs(plusDI-minusDI) / denominator
 }
 
 func maxHighBefore(candles []model.Candle, i, lookback int) float64 {

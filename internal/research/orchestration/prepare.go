@@ -131,6 +131,8 @@ func researchSuite(name string) ([]candidates.Adapter, error) {
 		return candidates.RSIMeanReversionV1(), nil
 	case "donchian-breakout-v1":
 		return candidates.DonchianBreakoutV1(), nil
+	case "bollinger-range-reversion-v1":
+		return candidates.BollingerRangeReversionV1(), nil
 	default:
 		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
 	}

@@ -72,3 +72,11 @@ func TestValidateDonchianBreakoutV1StrategyCodesRejectsMixedSuite(t *testing.T) 
 	donchian[0].Ref.Code = "mean-reversion-v1"
 	require.Error(t, manifest.ValidateDonchianBreakoutV1StrategyCodes(donchian))
 }
+
+func TestValidateBollingerRangeReversionV1StrategyCodesRejectsMixedSuite(t *testing.T) {
+	bollinger := []manifest.Strategy{{Ref: protocolv2.StrategyRef{Code: "bollinger-range-reversion-long-v1", Version: "v1.0.0"}}}
+	require.NoError(t, manifest.ValidateBollingerRangeReversionV1StrategyCodes(bollinger))
+	require.NoError(t, manifest.ValidateSupportedStrategyCodes(bollinger))
+	bollinger[0].Ref.Code = "mean-reversion-v1"
+	require.Error(t, manifest.ValidateBollingerRangeReversionV1StrategyCodes(bollinger))
+}

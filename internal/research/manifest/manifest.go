@@ -50,6 +50,10 @@ var donchianBreakoutV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
 	"donchian-breakout-long-v1": {},
 }
 
+var bollingerRangeReversionV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
+	"bollinger-range-reversion-long-v1": {},
+}
+
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation
 // scope after normal manifest validation. It rejects strategies reserved for
 // follow-up research changes without restricting non-core manifest consumers.
@@ -83,6 +87,10 @@ func ValidateDonchianBreakoutV1StrategyCodes(strategies []Strategy) error {
 	return validateStrategySuite("donchian-breakout-v1", strategies, donchianBreakoutV1StrategyCodes)
 }
 
+func ValidateBollingerRangeReversionV1StrategyCodes(strategies []Strategy) error {
+	return validateStrategySuite("bollinger-range-reversion-v1", strategies, bollingerRangeReversionV1StrategyCodes)
+}
+
 // ValidateSupportedStrategyCodes accepts one complete protocol suite, never a
 // mixture of historical core and new research candidates.
 func ValidateSupportedStrategyCodes(strategies []Strategy) error {
@@ -104,7 +112,10 @@ func ValidateSupportedStrategyCodes(strategies []Strategy) error {
 	if err := ValidateRSIMeanReversionV1StrategyCodes(strategies); err == nil {
 		return nil
 	}
-	return ValidateDonchianBreakoutV1StrategyCodes(strategies)
+	if err := ValidateDonchianBreakoutV1StrategyCodes(strategies); err == nil {
+		return nil
+	}
+	return ValidateBollingerRangeReversionV1StrategyCodes(strategies)
 }
 
 func validateStrategySuite(name string, strategies []Strategy, allowed map[protocolv2.StrategyCode]struct{}) error {

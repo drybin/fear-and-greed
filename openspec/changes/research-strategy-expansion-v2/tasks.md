@@ -29,10 +29,10 @@
 
 ## 5. Bollinger range reversion
 
-- [ ] 5.1 Implement causal Bollinger bands and ADX range classification
-- [ ] 5.2 Implement excursion, re-entry, stop, and band exits
-- [ ] 5.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
-- [ ] 5.4 Add metadata, registry, serialization, and common-contract tests
+- [x] 5.1 Implement causal Bollinger bands and ADX range classification
+- [x] 5.2 Implement excursion, re-entry, stop, and band exits
+- [x] 5.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
+- [x] 5.4 Add metadata, registry, serialization, and common-contract tests
 
 ## 6. Volume breakout
 

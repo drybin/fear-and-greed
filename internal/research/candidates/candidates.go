@@ -23,6 +23,7 @@ const (
 	MeanReversionCode                   protocolv2.StrategyCode = "mean-reversion-v1"
 	RSIMeanReversionLongCode            protocolv2.StrategyCode = "rsi-mean-reversion-long-v1"
 	DonchianBreakoutLongCode            protocolv2.StrategyCode = "donchian-breakout-long-v1"
+	BollingerRangeReversionLongCode     protocolv2.StrategyCode = "bollinger-range-reversion-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -149,6 +150,10 @@ func RSIMeanReversionV1() []Adapter { return []Adapter{rsiMeanReversionV1()} }
 // implementations and evaluates it under the unchanged protocol-v2 rules.
 func DonchianBreakoutV1() []Adapter { return []Adapter{donchianBreakoutV1()} }
 
+// BollingerRangeReversionV1 keeps range reversion independent from the daily
+// level and RSI mean-reversion experiments.
+func BollingerRangeReversionV1() []Adapter { return []Adapter{bollingerRangeReversionV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -198,7 +203,29 @@ func All() []Adapter {
 	all = append(all, DailyLowZoneV12()...)
 	all = append(all, DailyLowZoneV13()...)
 	all = append(all, RSIMeanReversionV1()...)
-	return append(all, DonchianBreakoutV1()...)
+	all = append(all, DonchianBreakoutV1()...)
+	return append(all, BollingerRangeReversionV1()...)
+}
+
+func bollingerRangeReversionV1() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "adx20-band20", Values: map[string]any{"adx_maximum": 20.0, "band_std_deviation": 2.0}},
+		{ID: "adx20-band25", Values: map[string]any{"adx_maximum": 20.0, "band_std_deviation": 2.5}},
+		{ID: "adx25-band20", Values: map[string]any{"adx_maximum": 25.0, "band_std_deviation": 2.0}},
+		{ID: "adx25-band25", Values: map[string]any{"adx_maximum": 25.0, "band_std_deviation": 2.5}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(BollingerRangeReversionLongCode, "v1.0.0"), Name: "Bollinger Range Reversion v1", Timeframe: "1h", WarmupBars: 40, Description: "1h close re-entering the lower Bollinger band while ADX14 is range-bound; TP1 at middle band, TP2 at upper band, or 48-hour time exit."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.BollingerRangeReversionV1Signals(candles, strategy.BollingerRangeReversionV1Params{ADXMaximum: candidate.Values["adx_maximum"].(float64), BandStdDeviation: candidate.Values["band_std_deviation"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown Bollinger range reversion candidate %q", id)
+		},
+	}
 }
 
 func donchianBreakoutV1() Adapter {
