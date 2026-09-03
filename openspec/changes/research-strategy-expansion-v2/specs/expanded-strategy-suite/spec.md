@@ -8,7 +8,13 @@ Every expanded strategy SHALL define a materially distinct hypothesis, invalidat
 - **THEN** it is represented inside an existing bounded grid rather than as a new strategy code
 
 ### Requirement: Donchian breakout
-`donchian-breakout-long-v1` SHALL signal trend continuation only after a completed 4h close exceeds a prior-channel high calculated without the signal candle.
+`donchian-breakout-long-v1@v1.0.0` SHALL signal trend continuation only after
+a completed 4h close crosses a prior-channel high calculated without the
+signal candle. The close SHALL be above a rising 4h EMA200, and the preceding
+close SHALL not already exceed that same prior-channel high. The bounded grid
+SHALL contain only channel lengths `20` and `40` and ATR(14) stops `1.5` and
+`2.0`. Exits SHALL be fixed at 1R partial, 3R final, or 21 days; dynamic
+trailing stops are outside this strategy version.
 
 #### Scenario: Causal breakout
 - **WHEN** trend, prior channel, breakout close, and stop conditions pass

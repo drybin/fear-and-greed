@@ -40,6 +40,29 @@ Volume breakout and capitulation require validated volume. Missing or zero-fille
 
 Development compares all six strategies under the core protocol. Only frozen versions reaching the development shortlist may open their assigned holdout once.
 
+### 6. Donchian breakout v1 is frozen as a standalone continuation hypothesis
+
+`donchian-breakout-long-v1@v1.0.0` tests whether a 4h close crossing a
+causally calculated Donchian-channel high continues an established long trend.
+The last fully closed 4h candle must close above a rising EMA200; the EMA must
+be higher than it was 20 completed 4h candles earlier. The channel contains
+only the preceding 20 or 40 completed 4h candles, never the signal candle.
+
+The bounded primary grid is exactly four candidates: channel length `20` or
+`40`, each with an initial ATR(14) stop of `1.5` or `2.0`. A signal requires a
+close above the prior channel high and prevents duplicate continuation entries
+by requiring the preceding close not already to be above that same level.
+
+The protocol engine executes at the next available 4h open. Exits are fixed:
+half at 1R, the remainder at 3R, with the existing protocol breakeven move
+after TP1, or a 21-day time exit. Dynamic trailing stops are explicitly out of
+scope for v1 because they require a separately versioned execution-contract
+change; calculating them while emitting signals would leak future candles.
+
+This hypothesis is invalidated if development fails the unchanged sample,
+profitability, stress, or robustness gates. No channel, stop, trend, or exit
+threshold may be adjusted after its development evidence is observed.
+
 ## Risks / Trade-offs
 
 - **[More hypotheses increase false discoveries]** → Bound grids and retain every losing candidate; advanced correction remains a later hardening change.

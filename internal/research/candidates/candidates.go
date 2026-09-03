@@ -22,6 +22,7 @@ const (
 	VolatilityCompressionBreakoutV2Code protocolv2.StrategyCode = "volatility-compression-breakout-v2"
 	MeanReversionCode                   protocolv2.StrategyCode = "mean-reversion-v1"
 	RSIMeanReversionLongCode            protocolv2.StrategyCode = "rsi-mean-reversion-long-v1"
+	DonchianBreakoutLongCode            protocolv2.StrategyCode = "donchian-breakout-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -144,6 +145,10 @@ func DailyLowZoneV13() []Adapter { return []Adapter{dailyLowZoneV13()} }
 // hypothesis from the earlier research-v3 mean-reversion implementation.
 func RSIMeanReversionV1() []Adapter { return []Adapter{rsiMeanReversionV1()} }
 
+// DonchianBreakoutV1 isolates trend continuation from the existing breakout
+// implementations and evaluates it under the unchanged protocol-v2 rules.
+func DonchianBreakoutV1() []Adapter { return []Adapter{donchianBreakoutV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -192,7 +197,29 @@ func All() []Adapter {
 	all = append(all, ResearchV3()...)
 	all = append(all, DailyLowZoneV12()...)
 	all = append(all, DailyLowZoneV13()...)
-	return append(all, RSIMeanReversionV1()...)
+	all = append(all, RSIMeanReversionV1()...)
+	return append(all, DonchianBreakoutV1()...)
+}
+
+func donchianBreakoutV1() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "dc20-stop15", Values: map[string]any{"channel_bars": 20, "stop_atr": 1.5}},
+		{ID: "dc20-stop20", Values: map[string]any{"channel_bars": 20, "stop_atr": 2.0}},
+		{ID: "dc40-stop15", Values: map[string]any{"channel_bars": 40, "stop_atr": 1.5}},
+		{ID: "dc40-stop20", Values: map[string]any{"channel_bars": 40, "stop_atr": 2.0}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(DonchianBreakoutLongCode, "v1.0.0"), Name: "Donchian Trend Breakout v1", Timeframe: "4h", WarmupBars: 220, Description: "4h close crossing a causal Donchian high above rising EMA200; 1R partial, 3R final target, or 21-day time exit."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.DonchianBreakoutV1Signals(candles, strategy.DonchianBreakoutV1Params{ChannelBars: candidate.Values["channel_bars"].(int), StopATR: candidate.Values["stop_atr"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown Donchian breakout candidate %q", id)
+		},
+	}
 }
 
 func rsiMeanReversionV1() Adapter {

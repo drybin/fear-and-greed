@@ -8,10 +8,10 @@
 
 ## 2. Donchian breakout
 
-- [ ] 2.1 Implement prior-channel calculation excluding the signal candle
-- [ ] 2.2 Implement trend filter, breakout confirmation, ATR stop, and exits
-- [ ] 2.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
-- [ ] 2.4 Add metadata, registry, serialization, and common-contract tests
+- [x] 2.1 Implement prior-channel calculation excluding the signal candle
+- [x] 2.2 Implement trend filter, breakout confirmation, ATR stop, and fixed protocol-compatible exits
+- [x] 2.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
+- [x] 2.4 Add metadata, registry, serialization, and common-contract tests
 
 ## 3. EMA pullback
 

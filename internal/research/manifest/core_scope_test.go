@@ -64,3 +64,11 @@ func TestValidateRSIMeanReversionV1StrategyCodesRejectsMixedSuite(t *testing.T) 
 	rsi[0].Ref.Code = "mean-reversion-v1"
 	require.Error(t, manifest.ValidateRSIMeanReversionV1StrategyCodes(rsi))
 }
+
+func TestValidateDonchianBreakoutV1StrategyCodesRejectsMixedSuite(t *testing.T) {
+	donchian := []manifest.Strategy{{Ref: protocolv2.StrategyRef{Code: "donchian-breakout-long-v1", Version: "v1.0.0"}}}
+	require.NoError(t, manifest.ValidateDonchianBreakoutV1StrategyCodes(donchian))
+	require.NoError(t, manifest.ValidateSupportedStrategyCodes(donchian))
+	donchian[0].Ref.Code = "mean-reversion-v1"
+	require.Error(t, manifest.ValidateDonchianBreakoutV1StrategyCodes(donchian))
+}
