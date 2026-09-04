@@ -34,7 +34,9 @@ No execution, cost, sizing, metric, fold, selection, or gate rule may be changed
 
 ### 4. Volume failure is explicit
 
-Volume breakout and capitulation require validated volume. Missing or zero-filled volume makes a symbol ineligible; the confirmation cannot be bypassed.
+Volume breakout and capitulation require validated volume. Missing, invalid, or
+fully zero-filled volume makes a symbol ineligible; isolated valid zero-volume
+minutes do not. The confirmation cannot be bypassed.
 
 ### 5. Holdout remains version-specific and one-time
 
@@ -84,8 +86,10 @@ after development evidence is observed.
 recover once a later green candle closes above the event close. An event needs
 a completed close-to-close loss of at least `4%` or `6%` and volume at least
 `2x` or `3x` the preceding 20-hour volume SMA. All source volumes must be
-present, finite, and positive; symbols failing this requirement are excluded
-only for volume-dependent strategies.
+present and finite, and the file must contain at least one positive value.
+Individual zero-volume minutes are allowed because Binance may validly publish
+a no-trade candle; symbols with missing, invalid, or fully zero-filled volume
+are excluded only for volume-dependent strategies.
 
 Recovery is allowed for the next 12 completed hours. The initial stop is the
 known event low; exits are fixed at 1R and 2R, or after 48 hours. This bounded

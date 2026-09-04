@@ -58,7 +58,8 @@ fixed swing-or-1.5-ATR stop, middle/upper-band exits, and 48-hour time exit.
 `4%`/`6%` with volume at least `2x`/`3x` the preceding 20-hour volume SMA, then
 require a later green recovery close above the event close within 12 hours.
 The strategy SHALL exclude any symbol whose source volume is absent, malformed,
-non-finite, or zero. It SHALL use the known event low as stop, 1R/2R exits,
+non-finite, or fully zero-filled; valid isolated zero-volume minutes SHALL not
+invalidate a source. It SHALL use the known event low as stop, 1R/2R exits,
 and a 48-hour time exit.
 
 #### Scenario: Causal recovery

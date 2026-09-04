@@ -43,14 +43,18 @@ type Issue struct {
 // not make a candle file ineligible on its own.
 type VolumeInventory struct {
 	Present       bool `json:"present"`
+	MissingRows   int  `json:"missing_rows"`
 	MalformedRows int  `json:"malformed_rows"`
 	NonFiniteRows int  `json:"non_finite_rows"`
 	ZeroRows      int  `json:"zero_rows"`
+	PositiveRows  int  `json:"positive_rows"`
 }
 
 // Usable reports whether a volume-dependent strategy can trust this source.
 func (v VolumeInventory) Usable() bool {
-	return v.Present && v.MalformedRows == 0 && v.NonFiniteRows == 0 && v.ZeroRows == 0
+	// A zero-volume minute can be a valid no-trade Binance candle. What makes
+	// a source unusable is a missing/invalid value or a fully zero-filled file.
+	return v.Present && v.MissingRows == 0 && v.MalformedRows == 0 && v.NonFiniteRows == 0 && v.PositiveRows > 0
 }
 
 // FileInventory describes one immutable candle input. SHA256 is calculated
@@ -136,7 +140,10 @@ func InventoryFile(path string) (FileInventory, error) {
 		}
 		prior = ts
 		result.Timestamps = append(result.Timestamps, ts)
-		if len(record) > 5 && strings.TrimSpace(record[5]) != "" {
+		if len(record) <= 5 || strings.TrimSpace(record[5]) == "" {
+			result.Volume.MissingRows++
+			result.Issues = append(result.Issues, Issue{Kind: IssueVolume, Row: row, Message: "missing volume"})
+		} else {
 			result.Volume.Present = true
 			volume, volumeErr := parseFloat(record[5])
 			if volumeErr != nil {
@@ -147,7 +154,8 @@ func InventoryFile(path string) (FileInventory, error) {
 				result.Issues = append(result.Issues, Issue{Kind: IssueVolume, Row: row, Message: "volume must be finite"})
 			} else if volume <= 0 {
 				result.Volume.ZeroRows++
-				result.Issues = append(result.Issues, Issue{Kind: IssueVolume, Row: row, Message: "volume must be positive"})
+			} else {
+				result.Volume.PositiveRows++
 			}
 		}
 	}

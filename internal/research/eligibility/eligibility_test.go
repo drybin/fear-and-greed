@@ -53,7 +53,7 @@ func TestInventoryFileDetectsUnorderedAndMissingIntervals(t *testing.T) {
 	requireIssue(t, inventory, eligibility.IssueMissing)
 }
 
-func TestVolumeInventoryRequiresPositiveValidVolume(t *testing.T) {
+func TestVolumeInventoryAllowsZeroMinutesButRejectsMissingOrZeroFilledFiles(t *testing.T) {
 	path := writeFixture(t, "volume.csv", `open_time,open,high,low,close,volume
 2023-01-01 00:00:00,1,2,0.5,1.5,10
 2023-01-01 01:00:00,1,2,0.5,1.5,0
@@ -62,7 +62,23 @@ func TestVolumeInventoryRequiresPositiveValidVolume(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, inventory.CoreUsable())
 	require.Equal(t, 1, inventory.Volume.ZeroRows)
-	require.False(t, inventory.Volume.Usable())
+	require.Equal(t, 1, inventory.Volume.PositiveRows)
+	require.True(t, inventory.Volume.Usable())
+
+	zeroOnly := writeFixture(t, "zero-volume.csv", `open_time,open,high,low,close,volume
+2023-01-01 00:00:00,1,2,0.5,1.5,0
+`)
+	zeroInventory, err := eligibility.InventoryFile(zeroOnly)
+	require.NoError(t, err)
+	require.False(t, zeroInventory.Volume.Usable())
+
+	missing := writeFixture(t, "missing-volume.csv", `open_time,open,high,low,close,volume
+2023-01-01 00:00:00,1,2,0.5,1.5,
+`)
+	missingInventory, err := eligibility.InventoryFile(missing)
+	require.NoError(t, err)
+	require.Equal(t, 1, missingInventory.Volume.MissingRows)
+	require.False(t, missingInventory.Volume.Usable())
 }
 
 func TestLoadFrozenSnapshotUsesExistingSymbolListFormat(t *testing.T) {
