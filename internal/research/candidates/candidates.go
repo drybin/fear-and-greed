@@ -24,6 +24,7 @@ const (
 	RSIMeanReversionLongCode            protocolv2.StrategyCode = "rsi-mean-reversion-long-v1"
 	DonchianBreakoutLongCode            protocolv2.StrategyCode = "donchian-breakout-long-v1"
 	BollingerRangeReversionLongCode     protocolv2.StrategyCode = "bollinger-range-reversion-long-v1"
+	CapitulationReversalLongCode        protocolv2.StrategyCode = "capitulation-reversal-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -154,6 +155,10 @@ func DonchianBreakoutV1() []Adapter { return []Adapter{donchianBreakoutV1()} }
 // level and RSI mean-reversion experiments.
 func BollingerRangeReversionV1() []Adapter { return []Adapter{bollingerRangeReversionV1()} }
 
+// CapitulationReversalV1 evaluates a volume-validated event-recovery
+// hypothesis independently from ordinary mean-reversion signals.
+func CapitulationReversalV1() []Adapter { return []Adapter{capitulationReversalV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -204,7 +209,29 @@ func All() []Adapter {
 	all = append(all, DailyLowZoneV13()...)
 	all = append(all, RSIMeanReversionV1()...)
 	all = append(all, DonchianBreakoutV1()...)
-	return append(all, BollingerRangeReversionV1()...)
+	all = append(all, BollingerRangeReversionV1()...)
+	return append(all, CapitulationReversalV1()...)
+}
+
+func capitulationReversalV1() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "drop4-vol2", Values: map[string]any{"return_percent": 4.0, "volume_multiplier": 2.0}},
+		{ID: "drop4-vol3", Values: map[string]any{"return_percent": 4.0, "volume_multiplier": 3.0}},
+		{ID: "drop6-vol2", Values: map[string]any{"return_percent": 6.0, "volume_multiplier": 2.0}},
+		{ID: "drop6-vol3", Values: map[string]any{"return_percent": 6.0, "volume_multiplier": 3.0}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(CapitulationReversalLongCode, "v1.0.0"), Name: "Capitulation Reversal v1", Timeframe: "1h", WarmupBars: 22, Description: "1h abnormal sell-off with validated relative volume, then a causal green recovery close; 1R/2R exits or 48-hour timeout."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.CapitulationReversalV1Signals(candles, strategy.CapitulationReversalV1Params{ReturnPercent: candidate.Values["return_percent"].(float64), VolumeMultiplier: candidate.Values["volume_multiplier"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown capitulation reversal candidate %q", id)
+		},
+	}
 }
 
 func bollingerRangeReversionV1() Adapter {

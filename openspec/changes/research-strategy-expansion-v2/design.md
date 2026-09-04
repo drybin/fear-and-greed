@@ -78,6 +78,20 @@ if neither exit occurs. This hypothesis is invalidated by unchanged protocol
 development gates; no indicator, stop, or target threshold will be retuned
 after development evidence is observed.
 
+### 8. Capitulation reversal v1 is frozen as an event-recovery hypothesis
+
+`capitulation-reversal-long-v1@v1.0.0` tests whether a forced 1h sell-off can
+recover once a later green candle closes above the event close. An event needs
+a completed close-to-close loss of at least `4%` or `6%` and volume at least
+`2x` or `3x` the preceding 20-hour volume SMA. All source volumes must be
+present, finite, and positive; symbols failing this requirement are excluded
+only for volume-dependent strategies.
+
+Recovery is allowed for the next 12 completed hours. The initial stop is the
+known event low; exits are fixed at 1R and 2R, or after 48 hours. This bounded
+four-candidate grid, event definition, recovery rule, and exits cannot be
+retuned after development evidence is observed.
+
 ## Risks / Trade-offs
 
 - **[More hypotheses increase false discoveries]** → Bound grids and retain every losing candidate; advanced correction remains a later hardening change.

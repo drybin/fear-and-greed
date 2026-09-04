@@ -45,6 +45,12 @@ type VolumeInventory struct {
 	Present       bool `json:"present"`
 	MalformedRows int  `json:"malformed_rows"`
 	NonFiniteRows int  `json:"non_finite_rows"`
+	ZeroRows      int  `json:"zero_rows"`
+}
+
+// Usable reports whether a volume-dependent strategy can trust this source.
+func (v VolumeInventory) Usable() bool {
+	return v.Present && v.MalformedRows == 0 && v.NonFiniteRows == 0 && v.ZeroRows == 0
 }
 
 // FileInventory describes one immutable candle input. SHA256 is calculated
@@ -139,6 +145,9 @@ func InventoryFile(path string) (FileInventory, error) {
 			} else if !finite(volume) {
 				result.Volume.NonFiniteRows++
 				result.Issues = append(result.Issues, Issue{Kind: IssueVolume, Row: row, Message: "volume must be finite"})
+			} else if volume <= 0 {
+				result.Volume.ZeroRows++
+				result.Issues = append(result.Issues, Issue{Kind: IssueVolume, Row: row, Message: "volume must be positive"})
 			}
 		}
 	}

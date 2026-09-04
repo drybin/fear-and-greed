@@ -44,11 +44,11 @@
 
 ## 7. Capitulation reversal
 
-- [ ] 7.1 Implement trailing abnormal-return and relative-volume event detection
-- [ ] 7.2 Implement later recovery, event-low stop, target, and timeout
-- [ ] 7.3 Prove event detection never uses future lows
-- [ ] 7.4 Add positive, negative, false-recovery, no-lookahead, and deterministic fixtures
-- [ ] 7.5 Add metadata, registry, serialization, and common-contract tests
+- [x] 7.1 Implement trailing abnormal-return and relative-volume event detection
+- [x] 7.2 Implement later recovery, event-low stop, target, and timeout
+- [x] 7.3 Prove event detection never uses future lows
+- [x] 7.4 Add positive, negative, false-recovery, no-lookahead, and deterministic fixtures
+- [x] 7.5 Add metadata, registry, serialization, and common-contract tests
 
 ## 8. Validation and acceptance
 

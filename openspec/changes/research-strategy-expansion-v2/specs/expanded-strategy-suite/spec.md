@@ -54,7 +54,12 @@ fixed swing-or-1.5-ATR stop, middle/upper-band exits, and 48-hour time exit.
 - **THEN** the symbol is ineligible and confirmation is not bypassed
 
 ### Requirement: Capitulation reversal
-`capitulation-reversal-long-v1` SHALL detect abnormal downside return and volume expansion from trailing data, then require a later recovery candle.
+`capitulation-reversal-long-v1@v1.0.0` SHALL detect a completed 1h loss of
+`4%`/`6%` with volume at least `2x`/`3x` the preceding 20-hour volume SMA, then
+require a later green recovery close above the event close within 12 hours.
+The strategy SHALL exclude any symbol whose source volume is absent, malformed,
+non-finite, or zero. It SHALL use the known event low as stop, 1R/2R exits,
+and a 48-hour time exit.
 
 #### Scenario: Causal recovery
 - **WHEN** capitulation thresholds pass and a later completed candle recovers the trigger level

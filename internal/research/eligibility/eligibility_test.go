@@ -53,6 +53,18 @@ func TestInventoryFileDetectsUnorderedAndMissingIntervals(t *testing.T) {
 	requireIssue(t, inventory, eligibility.IssueMissing)
 }
 
+func TestVolumeInventoryRequiresPositiveValidVolume(t *testing.T) {
+	path := writeFixture(t, "volume.csv", `open_time,open,high,low,close,volume
+2023-01-01 00:00:00,1,2,0.5,1.5,10
+2023-01-01 01:00:00,1,2,0.5,1.5,0
+`)
+	inventory, err := eligibility.InventoryFile(path)
+	require.NoError(t, err)
+	require.True(t, inventory.CoreUsable())
+	require.Equal(t, 1, inventory.Volume.ZeroRows)
+	require.False(t, inventory.Volume.Usable())
+}
+
 func TestLoadFrozenSnapshotUsesExistingSymbolListFormat(t *testing.T) {
 	path := writeFixture(t, "snapshot.txt", "# an existing scripts/symbols_*.txt-style file\nBTCUSDT\nETHUSDT\n")
 	asOf := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)

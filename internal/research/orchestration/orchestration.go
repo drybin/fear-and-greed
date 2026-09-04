@@ -124,7 +124,7 @@ func Development(ctx context.Context, options DevelopmentOptions) (DevelopmentRe
 	completed := 0
 	for _, strategy := range developmentStrategyOrder(options.Manifest.Strategies) {
 		for _, fold := range folds {
-			symbols, err := eligibleSymbols(options.Manifest, options.CandleStore, fold.Test, strategy.WarmupBars)
+			symbols, err := eligibleSymbols(options.Manifest, options.CandleStore, fold.Test, strategy.WarmupBars, requiresValidatedVolume(strategy.Ref))
 			if err != nil {
 				return report, fmt.Errorf("orchestration: eligibility %s/%s: %w", strategy.Ref, fold.ID, err)
 			}
@@ -304,7 +304,7 @@ func candidateEvidence(id protocolv2.ParameterCandidateID, symbols []protocolv2.
 	return evidence, nil
 }
 
-func eligibleSymbols(m manifest.Manifest, store CandleStore, test protocolv2.TimeRange, warmupBars int) ([]protocolv2.Symbol, error) {
+func eligibleSymbols(m manifest.Manifest, store CandleStore, test protocolv2.TimeRange, warmupBars int, requireVolume bool) ([]protocolv2.Symbol, error) {
 	if store == nil {
 		out := make([]protocolv2.Symbol, 0, len(m.Universe.Symbols))
 		for _, symbol := range m.Universe.Symbols {
@@ -328,10 +328,17 @@ func eligibleSymbols(m manifest.Manifest, store CandleStore, test protocolv2.Tim
 	}
 	out := make([]protocolv2.Symbol, 0, len(report.Primary))
 	for _, item := range report.Primary {
+		if requireVolume && !inventories[item.Symbol].Volume.Usable() {
+			continue
+		}
 		out = append(out, item.Symbol)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out, nil
+}
+
+func requiresValidatedVolume(ref protocolv2.StrategyRef) bool {
+	return ref.Code == "capitulation-reversal-long-v1" || ref.Code == "volume-breakout-long-v1"
 }
 
 func experimentRoot(output string, m manifest.Manifest) string {
@@ -517,7 +524,7 @@ func Final(ctx context.Context, outputDir string, m manifest.Manifest, sourceHas
 		if !ok {
 			return FinalReport{}, fmt.Errorf("orchestration: frozen strategy %s missing from manifest", candidate.Strategy)
 		}
-		symbols, err := eligibleSymbols(m, candles, m.Schedule.LockedHoldout, strategyConfig.WarmupBars)
+		symbols, err := eligibleSymbols(m, candles, m.Schedule.LockedHoldout, strategyConfig.WarmupBars, requiresValidatedVolume(strategyConfig.Ref))
 		if err != nil {
 			return FinalReport{}, err
 		}

@@ -80,3 +80,11 @@ func TestValidateBollingerRangeReversionV1StrategyCodesRejectsMixedSuite(t *test
 	bollinger[0].Ref.Code = "mean-reversion-v1"
 	require.Error(t, manifest.ValidateBollingerRangeReversionV1StrategyCodes(bollinger))
 }
+
+func TestValidateCapitulationReversalV1StrategyCodesRejectsMixedSuite(t *testing.T) {
+	capitulation := []manifest.Strategy{{Ref: protocolv2.StrategyRef{Code: "capitulation-reversal-long-v1", Version: "v1.0.0"}}}
+	require.NoError(t, manifest.ValidateCapitulationReversalV1StrategyCodes(capitulation))
+	require.NoError(t, manifest.ValidateSupportedStrategyCodes(capitulation))
+	capitulation[0].Ref.Code = "mean-reversion-v1"
+	require.Error(t, manifest.ValidateCapitulationReversalV1StrategyCodes(capitulation))
+}
