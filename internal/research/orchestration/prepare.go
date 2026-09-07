@@ -135,6 +135,8 @@ func researchSuite(name string) ([]candidates.Adapter, error) {
 		return candidates.BollingerRangeReversionV1(), nil
 	case "capitulation-reversal-v1":
 		return candidates.CapitulationReversalV1(), nil
+	case "ema-pullback-v1":
+		return candidates.EMAPullbackV1(), nil
 	default:
 		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
 	}

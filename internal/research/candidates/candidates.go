@@ -25,6 +25,7 @@ const (
 	DonchianBreakoutLongCode            protocolv2.StrategyCode = "donchian-breakout-long-v1"
 	BollingerRangeReversionLongCode     protocolv2.StrategyCode = "bollinger-range-reversion-long-v1"
 	CapitulationReversalLongCode        protocolv2.StrategyCode = "capitulation-reversal-long-v1"
+	EMAPullbackLongCode                 protocolv2.StrategyCode = "ema-pullback-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -159,6 +160,10 @@ func BollingerRangeReversionV1() []Adapter { return []Adapter{bollingerRangeReve
 // hypothesis independently from ordinary mean-reversion signals.
 func CapitulationReversalV1() []Adapter { return []Adapter{capitulationReversalV1()} }
 
+// EMAPullbackV1 evaluates trend-continuation after a controlled hourly
+// pullback, independently from breakout and mean-reversion hypotheses.
+func EMAPullbackV1() []Adapter { return []Adapter{emaPullbackV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -210,7 +215,29 @@ func All() []Adapter {
 	all = append(all, RSIMeanReversionV1()...)
 	all = append(all, DonchianBreakoutV1()...)
 	all = append(all, BollingerRangeReversionV1()...)
-	return append(all, CapitulationReversalV1()...)
+	all = append(all, CapitulationReversalV1()...)
+	return append(all, EMAPullbackV1()...)
+}
+
+func emaPullbackV1() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "ema20-stop15", Values: map[string]any{"pullback_ema_period": 20, "stop_atr": 1.5}},
+		{ID: "ema20-stop20", Values: map[string]any{"pullback_ema_period": 20, "stop_atr": 2.0}},
+		{ID: "ema50-stop15", Values: map[string]any{"pullback_ema_period": 50, "stop_atr": 1.5}},
+		{ID: "ema50-stop20", Values: map[string]any{"pullback_ema_period": 50, "stop_atr": 2.0}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(EMAPullbackLongCode, "v1.0.0"), Name: "EMA Pullback v1", Timeframe: "1h", WarmupBars: 880, Description: "1h touch of EMA20 or EMA50 followed by a later green recovery inside a causal rising 4h EMA200 trend; 1R partial, 3R final target, or 7-day time exit."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.EMAPullbackV1Signals(candles, strategy.EMAPullbackV1Params{PullbackEMAPeriod: candidate.Values["pullback_ema_period"].(int), StopATR: candidate.Values["stop_atr"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown EMA pullback candidate %q", id)
+		},
+	}
 }
 
 func capitulationReversalV1() Adapter {

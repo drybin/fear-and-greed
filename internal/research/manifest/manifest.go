@@ -58,6 +58,10 @@ var capitulationReversalV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
 	"capitulation-reversal-long-v1": {},
 }
 
+var emaPullbackV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
+	"ema-pullback-long-v1": {},
+}
+
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation
 // scope after normal manifest validation. It rejects strategies reserved for
 // follow-up research changes without restricting non-core manifest consumers.
@@ -99,6 +103,10 @@ func ValidateCapitulationReversalV1StrategyCodes(strategies []Strategy) error {
 	return validateStrategySuite("capitulation-reversal-v1", strategies, capitulationReversalV1StrategyCodes)
 }
 
+func ValidateEMAPullbackV1StrategyCodes(strategies []Strategy) error {
+	return validateStrategySuite("ema-pullback-v1", strategies, emaPullbackV1StrategyCodes)
+}
+
 // ValidateSupportedStrategyCodes accepts one complete protocol suite, never a
 // mixture of historical core and new research candidates.
 func ValidateSupportedStrategyCodes(strategies []Strategy) error {
@@ -126,7 +134,10 @@ func ValidateSupportedStrategyCodes(strategies []Strategy) error {
 	if err := ValidateBollingerRangeReversionV1StrategyCodes(strategies); err == nil {
 		return nil
 	}
-	return ValidateCapitulationReversalV1StrategyCodes(strategies)
+	if err := ValidateCapitulationReversalV1StrategyCodes(strategies); err == nil {
+		return nil
+	}
+	return ValidateEMAPullbackV1StrategyCodes(strategies)
 }
 
 func validateStrategySuite(name string, strategies []Strategy, allowed map[protocolv2.StrategyCode]struct{}) error {

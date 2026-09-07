@@ -68,6 +68,18 @@ SUITE=bollinger-range-reversion-v1 ./scripts/run_research_v2.sh
 SUITE=capitulation-reversal-v1 SKIP_FETCH=1 ./scripts/run_research_v2.sh
 ```
 
+Для независимой проверки трендового отката используйте `ema-pullback-v1`.
+Рабочий 4h режим требует, чтобы последняя завершенная свеча была выше
+растущей EMA200. На 1h цена должна коснуться EMA20 или EMA50, после чего
+отдельная последующая зелёная свеча закрывается выше той же EMA. Стоп -- ниже
+минимума касания либо на `1.5`/`2.0 ATR(14)`, что дальше от входа; выходы --
+1R, 3R или 7 суток. Сетка заранее фиксирует EMA `20/50` и ATR-stop
+`1.5/2.0`.
+
+```bash
+SUITE=ema-pullback-v1 SKIP_FETCH=1 ./scripts/run_research_v2.sh
+```
+
 Ресурсоёмкие фазы `development`, `freeze`, `review` и `final` по умолчанию
 ограничены `GOMEMLIMIT=512MiB GOGC=20`, чтобы длинный прогон не был остановлен
 VPS по памяти. При достаточном объёме RAM значения можно явно переопределить

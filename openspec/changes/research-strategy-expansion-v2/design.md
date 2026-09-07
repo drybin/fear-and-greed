@@ -65,7 +65,28 @@ This hypothesis is invalidated if development fails the unchanged sample,
 profitability, stress, or robustness gates. No channel, stop, trend, or exit
 threshold may be adjusted after its development evidence is observed.
 
-### 7. Bollinger range reversion v1 is frozen as a standalone range hypothesis
+### 7. EMA pullback v1 is frozen as a standalone trend-pullback hypothesis
+
+`ema-pullback-long-v1@v1.0.0` tests whether an established higher-timeframe
+uptrend can resume after a controlled pullback to a short or medium 1h EMA.
+The last fully closed 4h candle must close above EMA200, and EMA200 must be
+higher than 20 completed 4h candles earlier. The in-progress 4h candle is
+never used for the 1h decision.
+
+The bounded primary grid is exactly four candidates: pullback EMA `20` or
+`50`, each with an initial ATR(14) distance of `1.5` or `2.0`. A completed 1h
+candle must touch the selected EMA. Only a *later* completed green 1h candle
+closing above that EMA confirms recovery; the touch candle cannot create an
+entry by itself. The recovery opportunity expires after 12 completed hours.
+
+The initial stop is the lower of the known touch low and entry minus the
+configured ATR distance. The protocol engine executes at the next available
+1h open, exits half at 1R and the remainder at 3R, and closes any remaining
+position after seven days. This hypothesis is invalidated by unchanged protocol
+development gates; no EMA, trend, stop, recovery, target, or timeout setting
+may be retuned after development evidence is observed.
+
+### 8. Bollinger range reversion v1 is frozen as a standalone range hypothesis
 
 `bollinger-range-reversion-long-v1@v1.0.0` tests whether a completed 1h close
 that returns inside the lower Bollinger band can revert in a non-trending
@@ -80,7 +101,7 @@ if neither exit occurs. This hypothesis is invalidated by unchanged protocol
 development gates; no indicator, stop, or target threshold will be retuned
 after development evidence is observed.
 
-### 8. Capitulation reversal v1 is frozen as an event-recovery hypothesis
+### 9. Capitulation reversal v1 is frozen as an event-recovery hypothesis
 
 `capitulation-reversal-long-v1@v1.0.0` tests whether a forced 1h sell-off can
 recover once a later green candle closes above the event close. An event needs

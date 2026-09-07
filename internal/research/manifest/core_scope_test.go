@@ -88,3 +88,11 @@ func TestValidateCapitulationReversalV1StrategyCodesRejectsMixedSuite(t *testing
 	capitulation[0].Ref.Code = "mean-reversion-v1"
 	require.Error(t, manifest.ValidateCapitulationReversalV1StrategyCodes(capitulation))
 }
+
+func TestValidateEMAPullbackV1StrategyCodesRejectsMixedSuite(t *testing.T) {
+	pullback := []manifest.Strategy{{Ref: protocolv2.StrategyRef{Code: "ema-pullback-long-v1", Version: "v1.0.0"}}}
+	require.NoError(t, manifest.ValidateEMAPullbackV1StrategyCodes(pullback))
+	require.NoError(t, manifest.ValidateSupportedStrategyCodes(pullback))
+	pullback[0].Ref.Code = "mean-reversion-v1"
+	require.Error(t, manifest.ValidateEMAPullbackV1StrategyCodes(pullback))
+}

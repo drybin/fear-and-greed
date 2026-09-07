@@ -15,10 +15,10 @@
 
 ## 3. EMA pullback
 
-- [ ] 3.1 Implement causal 4h trend state and 1h EMA touch detection
-- [ ] 3.2 Implement later recovery confirmation, swing-or-ATR stop, and exits
-- [ ] 3.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
-- [ ] 3.4 Add metadata, registry, serialization, and common-contract tests
+- [x] 3.1 Implement causal 4h trend state and 1h EMA touch detection
+- [x] 3.2 Implement later recovery confirmation, swing-or-ATR stop, and exits
+- [x] 3.3 Add positive, negative, boundary, no-lookahead, and deterministic fixtures
+- [x] 3.4 Add metadata, registry, serialization, and common-contract tests
 
 ## 4. RSI trend mean reversion
 

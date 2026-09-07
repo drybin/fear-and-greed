@@ -21,11 +21,23 @@ trailing stops are outside this strategy version.
 - **THEN** the strategy emits a next-bar long signal with channel and ATR diagnostics
 
 ### Requirement: EMA pullback
-`ema-pullback-long-v1` SHALL signal recovery from a fast or medium EMA only inside a rising higher-timeframe trend.
+`ema-pullback-long-v1@v1.0.0` SHALL signal recovery from EMA20 or EMA50 only
+inside a causal rising 4h EMA200 trend. The trend EMA SHALL be above its value
+20 completed 4h candles earlier, and the last completed 4h close SHALL be
+above that EMA. The bounded primary grid SHALL contain only EMA periods `20`
+and `50` with ATR(14) stops `1.5` and `2.0`.
 
 #### Scenario: Confirmed recovery
-- **WHEN** a 1h pullback touches the configured EMA and a later completed candle confirms recovery while the 4h trend passes
-- **THEN** the strategy emits a next-bar signal with a swing-or-ATR stop
+- **WHEN** a 1h pullback touches the configured EMA and a later completed
+  green candle closes above it while the 4h trend passes
+- **THEN** the strategy emits a next-bar signal with the lower of touch-low or
+  ATR stop, fixed 1R/3R exits, and a seven-day timeout
+
+#### Scenario: Touch cannot enter on its own candle
+- **WHEN** the candle touching the configured EMA closes green and above that
+  EMA
+- **THEN** the strategy SHALL wait for a later completed candle before emitting
+  a signal
 
 ### Requirement: RSI trend mean reversion
 `rsi-mean-reversion-long-v1` SHALL signal short-term oversold recovery only while a causal higher-timeframe long trend passes.

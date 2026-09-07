@@ -143,3 +143,12 @@ func TestCapitulationReversalV1IsolatedAdapter(t *testing.T) {
 	require.Equal(t, protocolv2.Timeframe("1h"), adapters[0].Metadata().Timeframe)
 	require.Len(t, adapters[0].Grid(), 4)
 }
+
+func TestEMAPullbackV1IsolatedAdapter(t *testing.T) {
+	adapters := EMAPullbackV1()
+	require.Len(t, adapters, 1)
+	require.Equal(t, EMAPullbackLongCode, adapters[0].Metadata().Ref.Code)
+	require.Equal(t, protocolv2.StrategyVersion("v1.0.0"), adapters[0].Metadata().Ref.Version)
+	require.Equal(t, protocolv2.Timeframe("1h"), adapters[0].Metadata().Timeframe)
+	require.Len(t, adapters[0].Grid(), 4)
+}
