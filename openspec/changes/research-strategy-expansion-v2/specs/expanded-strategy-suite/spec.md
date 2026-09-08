@@ -59,7 +59,17 @@ fixed swing-or-1.5-ATR stop, middle/upper-band exits, and 48-hour time exit.
 - **THEN** the strategy emits a next-bar signal with defined stop and band-based exit
 
 ### Requirement: Volume-confirmed breakout
-`volume-breakout-long-v1` SHALL require a prior-level breakout and validated relative-volume confirmation.
+`volume-breakout-long-v1@v1.0.0` SHALL require a completed 1h close above the
+highest high of the preceding `20` or `40` completed hours, while the preceding
+close does not already exceed that same level. Its completed volume SHALL be
+at least `1.5x` or `2.0x` the preceding 20-hour volume SMA. It SHALL use a
+fixed 1.5 ATR(14) stop, 1R/3R exits, and a seven-day timeout.
+
+#### Scenario: Causal volume breakout
+- **WHEN** the completed close crosses its causal prior high and completed
+  volume meets the chosen prior-SMA multiplier
+- **THEN** the strategy emits a next-bar signal with level, volume, and ATR
+  diagnostics
 
 #### Scenario: Missing volume
 - **WHEN** volume is absent or fails quality validation

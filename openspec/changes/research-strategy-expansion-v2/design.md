@@ -117,6 +117,28 @@ known event low; exits are fixed at 1R and 2R, or after 48 hours. This bounded
 four-candidate grid, event definition, recovery rule, and exits cannot be
 retuned after development evidence is observed.
 
+### 10. Volume breakout v1 is frozen as a participation-confirmed hypothesis
+
+`volume-breakout-long-v1@v1.0.0` tests whether a completed 1h break above a
+causal local high is more durable when market participation is materially above
+its recent baseline. The prior high is the maximum high of the preceding `20`
+or `40` completed 1h candles. The signal close must exceed that high while the
+preceding close does not, preventing repeated entries above an already broken
+level.
+
+The bounded primary grid is exactly four candidates: level length `20` or
+`40`, each requiring current completed volume of at least `1.5x` or `2.0x` the
+preceding 20-hour volume SMA. Source volume must be present, finite, and not
+fully zero-filled; isolated valid no-trade minutes are permitted. A failed
+volume eligibility check excludes the symbol rather than bypassing the filter.
+
+The initial stop is fixed at 1.5 ATR(14) below the signal close. The protocol
+engine executes at the next available 1h open, exits half at 1R and the
+remainder at 3R, and closes any remaining position after seven days. This
+hypothesis is invalidated by unchanged protocol development gates; no level,
+volume, stop, target, or timeout setting may be retuned after development
+evidence is observed.
+
 ## Risks / Trade-offs
 
 - **[More hypotheses increase false discoveries]** → Bound grids and retain every losing candidate; advanced correction remains a later hardening change.

@@ -36,11 +36,11 @@
 
 ## 6. Volume breakout
 
-- [ ] 6.1 Implement prior-level and completed-volume baseline calculations
-- [ ] 6.2 Implement relative-volume confirmation, ATR stop, and exits
-- [ ] 6.3 Implement explicit missing-volume ineligibility
-- [ ] 6.4 Add positive, negative, missing-volume, no-lookahead, and deterministic fixtures
-- [ ] 6.5 Add metadata, registry, serialization, and common-contract tests
+- [x] 6.1 Implement prior-level and completed-volume baseline calculations
+- [x] 6.2 Implement relative-volume confirmation, ATR stop, and exits
+- [x] 6.3 Implement explicit missing-volume ineligibility
+- [x] 6.4 Add positive, negative, missing-volume, no-lookahead, and deterministic fixtures
+- [x] 6.5 Add metadata, registry, serialization, and common-contract tests
 
 ## 7. Capitulation reversal
 

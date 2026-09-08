@@ -96,3 +96,11 @@ func TestValidateEMAPullbackV1StrategyCodesRejectsMixedSuite(t *testing.T) {
 	pullback[0].Ref.Code = "mean-reversion-v1"
 	require.Error(t, manifest.ValidateEMAPullbackV1StrategyCodes(pullback))
 }
+
+func TestValidateVolumeBreakoutV1StrategyCodesRejectsMixedSuite(t *testing.T) {
+	breakout := []manifest.Strategy{{Ref: protocolv2.StrategyRef{Code: "volume-breakout-long-v1", Version: "v1.0.0"}}}
+	require.NoError(t, manifest.ValidateVolumeBreakoutV1StrategyCodes(breakout))
+	require.NoError(t, manifest.ValidateSupportedStrategyCodes(breakout))
+	breakout[0].Ref.Code = "mean-reversion-v1"
+	require.Error(t, manifest.ValidateVolumeBreakoutV1StrategyCodes(breakout))
+}

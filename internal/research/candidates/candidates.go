@@ -26,6 +26,7 @@ const (
 	BollingerRangeReversionLongCode     protocolv2.StrategyCode = "bollinger-range-reversion-long-v1"
 	CapitulationReversalLongCode        protocolv2.StrategyCode = "capitulation-reversal-long-v1"
 	EMAPullbackLongCode                 protocolv2.StrategyCode = "ema-pullback-long-v1"
+	VolumeBreakoutLongCode              protocolv2.StrategyCode = "volume-breakout-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -164,6 +165,10 @@ func CapitulationReversalV1() []Adapter { return []Adapter{capitulationReversalV
 // pullback, independently from breakout and mean-reversion hypotheses.
 func EMAPullbackV1() []Adapter { return []Adapter{emaPullbackV1()} }
 
+// VolumeBreakoutV1 isolates participation-confirmed breakouts from prior
+// channel-only and compression-breakout research suites.
+func VolumeBreakoutV1() []Adapter { return []Adapter{volumeBreakoutV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -216,7 +221,29 @@ func All() []Adapter {
 	all = append(all, DonchianBreakoutV1()...)
 	all = append(all, BollingerRangeReversionV1()...)
 	all = append(all, CapitulationReversalV1()...)
-	return append(all, EMAPullbackV1()...)
+	all = append(all, EMAPullbackV1()...)
+	return append(all, VolumeBreakoutV1()...)
+}
+
+func volumeBreakoutV1() Adapter {
+	grid := []ParameterCandidate{
+		{ID: "vb20-vol15", Values: map[string]any{"channel_bars": 20, "volume_multiplier": 1.5}},
+		{ID: "vb20-vol20", Values: map[string]any{"channel_bars": 20, "volume_multiplier": 2.0}},
+		{ID: "vb40-vol15", Values: map[string]any{"channel_bars": 40, "volume_multiplier": 1.5}},
+		{ID: "vb40-vol20", Values: map[string]any{"channel_bars": 40, "volume_multiplier": 2.0}},
+	}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(VolumeBreakoutLongCode, "v1.0.0"), Name: "Volume Breakout v1", Timeframe: "1h", WarmupBars: 41, Description: "1h close crossing a causal 20h or 40h high with 1.5x or 2.0x completed relative volume; 1R partial, 3R final target, or 7-day time exit."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			for _, candidate := range grid {
+				if candidate.ID == id {
+					return strategy.VolumeBreakoutV1Signals(candles, strategy.VolumeBreakoutV1Params{ChannelBars: candidate.Values["channel_bars"].(int), VolumeMultiplier: candidate.Values["volume_multiplier"].(float64)})
+				}
+			}
+			return nil, fmt.Errorf("unknown volume breakout candidate %q", id)
+		},
+	}
 }
 
 func emaPullbackV1() Adapter {
