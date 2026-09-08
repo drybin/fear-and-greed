@@ -17,19 +17,21 @@ type DailyBar struct {
 }
 
 type Rank struct {
-	Symbol        protocolv2.Symbol `json:"symbol"`
-	Rank          int               `json:"rank"`
-	Score         float64           `json:"score"`
-	Return        float64           `json:"return"`
-	Volatility    float64           `json:"volatility"`
-	StopDistance  float64           `json:"stop_distance"`
-	EntryEligible bool              `json:"entry_eligible"`
-	MaxEntryPrice float64           `json:"max_entry_price,omitempty"`
+	Symbol              protocolv2.Symbol `json:"symbol"`
+	Rank                int               `json:"rank"`
+	Score               float64           `json:"score"`
+	Return              float64           `json:"return"`
+	Volatility          float64           `json:"volatility"`
+	StopDistance        float64           `json:"stop_distance"`
+	EntryEligible       bool              `json:"entry_eligible"`
+	MaxEntryPrice       float64           `json:"max_entry_price,omitempty"`
+	TargetWeightPercent float64           `json:"target_weight_percent,omitempty"`
 }
 
 type Rebalance struct {
 	FillTime        time.Time                  `json:"fill_time"`
 	RegimeOn        bool                       `json:"regime_on"`
+	ReplaceAll      bool                       `json:"replace_all,omitempty"`
 	BTCAboveEMA     bool                       `json:"btc_above_ema"`
 	PositiveBreadth float64                    `json:"positive_breadth"`
 	Targets         []Rank                     `json:"targets"`
@@ -134,6 +136,67 @@ func RelativeStrengthRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg Relat
 		events = append(events, event)
 	}
 	return events, nil
+}
+
+// SlowMomentumRebalances ranks symbols solely by their completed 60d or 90d
+// return. Each weekly event replaces the whole target set; when no return is
+// positive it emits an empty target set and the engine remains in cash.
+func SlowMomentumRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg SlowMomentumConfig, evaluationStart, evaluationEnd time.Time) ([]Rebalance, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	calendar := bars["BTCUSDT"]
+	if len(calendar) == 0 {
+		return nil, fmt.Errorf("portfolio: BTCUSDT is required for rebalance calendar")
+	}
+	events := make([]Rebalance, 0)
+	for _, fill := range calendar {
+		if fill.Time.Before(evaluationStart) || !fill.Time.Before(evaluationEnd) || fill.Time.Weekday() != cfg.RebalanceWeekday {
+			continue
+		}
+		ranking := make([]Rank, 0, len(bars))
+		for symbol, series := range bars {
+			rank, ok := slowMomentumScore(symbol, completedBefore(series, fill.Time), cfg.LookbackDays)
+			if ok {
+				ranking = append(ranking, rank)
+			}
+		}
+		sort.Slice(ranking, func(i, j int) bool {
+			if ranking[i].Return != ranking[j].Return {
+				return ranking[i].Return > ranking[j].Return
+			}
+			return ranking[i].Symbol < ranking[j].Symbol
+		})
+		for i := range ranking {
+			ranking[i].Rank = i + 1
+		}
+		event := Rebalance{FillTime: fill.Time, RegimeOn: true, ReplaceAll: true, Retain: map[protocolv2.Symbol]bool{}, Ranking: ranking}
+		for _, rank := range ranking {
+			if rank.Rank > cfg.TopK {
+				break
+			}
+			rank.TargetWeightPercent = 100 / float64(cfg.TopK)
+			event.Targets = append(event.Targets, rank)
+			event.Retain[rank.Symbol] = true
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func slowMomentumScore(symbol protocolv2.Symbol, history []DailyBar, lookback int) (Rank, bool) {
+	if len(history) < lookback+1 {
+		return Rank{}, false
+	}
+	last, base := history[len(history)-1].Close, history[len(history)-1-lookback].Close
+	if !positive(last) || !positive(base) {
+		return Rank{}, false
+	}
+	ret := last/base - 1
+	if ret <= 0 {
+		return Rank{}, false
+	}
+	return Rank{Symbol: symbol, Score: protocolv2.RoundMetric(ret), Return: protocolv2.RoundMetric(ret), EntryEligible: true}, true
 }
 
 func regimeEnabled(mode RegimeMode, btcAboveEMA, breadthPositive bool) bool {

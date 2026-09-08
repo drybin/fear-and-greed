@@ -95,7 +95,7 @@ func (e Engine) Run(bars map[protocolv2.Symbol][]DailyBar, events []Rebalance, s
 		if event, ok := eventByTime[day]; ok {
 			// Membership exits release cash before simultaneous entries compete.
 			for _, symbol := range sortedPositions(positions) {
-				if event.RegimeOn && event.Retain[symbol] {
+			if !event.ReplaceAll && event.RegimeOn && event.Retain[symbol] {
 					continue
 				}
 				bar, exists := daily[symbol]
@@ -118,13 +118,17 @@ func (e Engine) Run(bars map[protocolv2.Symbol][]DailyBar, events []Rebalance, s
 				result.Decisions = append(result.Decisions, decision(day, target, reason == "", fallback(reason, "accepted"), equity, result.FinalCash, openRisk(positions)))
 			}
 		}
-		// Stops are evaluated conservatively after open-time allocation.
+		// Stops are evaluated conservatively after open-time allocation. Slow
+		// momentum targets have a zero stop distance and exit only at rebalance.
 		for _, symbol := range sortedPositions(positions) {
 			bar, exists := daily[symbol]
 			if !exists {
 				continue
 			}
 			position := positions[symbol]
+			if position.Stop <= 0 {
+				continue
+			}
 			if bar.Open <= position.Stop {
 				e.exit(&result, positions, symbol, day, bar.Open, "stop_gap")
 				continue
@@ -171,17 +175,28 @@ func (e Engine) enter(result *EngineResult, positions map[protocolv2.Symbol]Posi
 		return "entry_extension"
 	}
 	entry := protocolv2.RoundPrice(open * (1 + e.Costs.SlippageBPS/10000))
-	if target.StopDistance <= 0 || target.StopDistance >= entry {
+	if target.StopDistance < 0 || target.StopDistance >= entry {
 		return "invalid_stop"
 	}
-	riskBudget := equity * e.Limits.RiskPerTradePercent / 100
-	riskQty := riskBudget / target.StopDistance
-	capQty := equity * e.Limits.MaxPositionPercent / 100 / entry
-	qty := protocolv2.RoundQuantity(minFloat(riskQty, capQty))
+	qty, risk := 0.0, 0.0
+	if target.TargetWeightPercent > 0 {
+		if target.TargetWeightPercent > e.Limits.MaxPositionPercent {
+			return "position_weight_limit"
+		}
+		qty = protocolv2.RoundQuantity(equity * target.TargetWeightPercent / 100 / entry)
+	} else {
+		if target.StopDistance <= 0 {
+			return "invalid_stop"
+		}
+		riskBudget := equity * e.Limits.RiskPerTradePercent / 100
+		riskQty := riskBudget / target.StopDistance
+		capQty := equity * e.Limits.MaxPositionPercent / 100 / entry
+		qty = protocolv2.RoundQuantity(minFloat(riskQty, capQty))
+		risk = protocolv2.RoundFee(qty * target.StopDistance)
+	}
 	if qty <= 0 {
 		return "invalid_quantity"
 	}
-	risk := protocolv2.RoundFee(qty * target.StopDistance)
 	if openRisk(positions)+risk > equity*e.Limits.MaxAggregateRiskPct/100 {
 		return "aggregate_risk_limit"
 	}
@@ -193,13 +208,19 @@ func (e Engine) enter(result *EngineResult, positions map[protocolv2.Symbol]Posi
 		if qty <= 0 || notional+commission > result.FinalCash {
 			return "insufficient_cash"
 		}
-		risk = protocolv2.RoundFee(qty * target.StopDistance)
+		if target.StopDistance > 0 {
+			risk = protocolv2.RoundFee(qty * target.StopDistance)
+		}
 	}
 	result.FinalCash = protocolv2.RoundFee(result.FinalCash - notional - commission)
 	result.Commission = protocolv2.RoundFee(result.Commission + commission)
 	result.Slippage = protocolv2.RoundFee(result.Slippage + (entry-open)*qty)
 	result.TradedNotional = protocolv2.RoundFee(result.TradedNotional + notional)
-	positions[target.Symbol] = Position{Symbol: target.Symbol, OpenedAt: at, Quantity: qty, EntryPrice: entry, Stop: protocolv2.RoundPrice(entry - target.StopDistance), InitialRisk: risk}
+	stop := 0.0
+	if target.StopDistance > 0 {
+		stop = protocolv2.RoundPrice(entry - target.StopDistance)
+	}
+	positions[target.Symbol] = Position{Symbol: target.Symbol, OpenedAt: at, Quantity: qty, EntryPrice: entry, Stop: stop, InitialRisk: risk}
 	return ""
 }
 

@@ -21,7 +21,34 @@ const (
 	ReportSchemaVersion   = "portfolio.report.v1"
 	StrategyCode          = "relative-strength-long-v1"
 	StrategyVersion       = "v1.0.0"
+	SlowMomentumCode      = "slow-cross-sectional-momentum-v1"
 )
+
+// StrategyKind distinguishes portfolio hypotheses without changing legacy
+// relative-strength manifests. The empty value intentionally means legacy
+// relative strength so its serialized identity remains backward compatible.
+type StrategyKind string
+
+const (
+	StrategyKindRelativeStrength StrategyKind = "relative-strength"
+	StrategyKindSlowMomentum     StrategyKind = "slow-cross-sectional-momentum-v1"
+)
+
+func (k StrategyKind) Validate() error {
+	switch k {
+	case "", StrategyKindRelativeStrength, StrategyKindSlowMomentum:
+		return nil
+	default:
+		return fmt.Errorf("portfolio: invalid strategy kind %q", k)
+	}
+}
+
+func (k StrategyKind) normalized() StrategyKind {
+	if k == "" {
+		return StrategyKindRelativeStrength
+	}
+	return k
+}
 
 // RegimeMode controls which frozen market filters can enable relative-strength
 // allocation. It is an experiment input, never a runtime tuning knob.
@@ -113,6 +140,23 @@ type RelativeStrengthConfig struct {
 	MaxEntryDistanceATR float64      `json:"max_entry_distance_atr"`
 }
 
+// SlowMomentumConfig defines one fully specified weekly cross-sectional
+// momentum candidate. It intentionally has no regime filter or stop: holdings
+// are equal-weighted and replaced only at the next weekly rebalance.
+type SlowMomentumConfig struct {
+	LookbackDays     int          `json:"lookback_days"`
+	TopK             int          `json:"top_k"`
+	RebalanceWeekday time.Weekday `json:"rebalance_weekday"`
+}
+
+func (c SlowMomentumConfig) Validate() error {
+	if (c.LookbackDays != 60 && c.LookbackDays != 90) || (c.TopK != 5 && c.TopK != 10) ||
+		c.RebalanceWeekday < time.Sunday || c.RebalanceWeekday > time.Saturday {
+		return fmt.Errorf("portfolio: invalid slow momentum config")
+	}
+	return nil
+}
+
 type Gates struct {
 	MinNetReturn           float64 `json:"min_net_return"`
 	MaxDrawdown            float64 `json:"max_drawdown"`
@@ -136,7 +180,9 @@ type Manifest struct {
 	BaseCosts              CostProfile               `json:"base_costs"`
 	StressCosts            CostProfile               `json:"stress_costs"`
 	Limits                 Limits                    `json:"limits"`
+	StrategyKind           StrategyKind              `json:"strategy_kind,omitempty"`
 	RelativeStrength       RelativeStrengthConfig    `json:"relative_strength"`
+	SlowMomentum           *SlowMomentumConfig       `json:"slow_momentum,omitempty"`
 	Gates                  Gates                     `json:"gates"`
 }
 
@@ -158,6 +204,27 @@ func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool,
 		RelativeStrength: RelativeStrengthConfig{ReturnLookbackDays: 90, VolatilityDays: 30, ATRDays: 20, StopATR: 2, TopK: 5, ExitRank: 10, BTCEMADays: 200, MinPositiveBreadth: .5, RebalanceWeekday: time.Monday, RegimeMode: regimeMode, EntryMode: entryMode, PullbackEMADays: 20, MaxEntryDistanceATR: .5},
 		Gates:            Gates{MinNetReturn: 0, MaxDrawdown: .25, MinExcessVsBTC: -.05, MinExcessVsEqualWeight: -.05, MaxContribution: .4, RequireStressPositive: true},
 	}
+	if err := m.freeze(); err != nil {
+		return Manifest{}, err
+	}
+	return m, nil
+}
+
+// DefaultSlowMomentumManifest freezes one slow-momentum candidate. It is
+// deliberately separate from relative strength, whose ranking and filters
+// remain unchanged for historical manifests and reports.
+func DefaultSlowMomentumManifest(source manifest.Manifest, revision string, diagnostic bool, config SlowMomentumConfig, requestedRange *protocolv2.TimeRange) (Manifest, error) {
+	if err := config.Validate(); err != nil {
+		return Manifest{}, err
+	}
+	m, err := DefaultManifest(source, revision, diagnostic, RegimeModeNone, EntryModeWeeklyOpen, requestedRange)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m.ID, m.Hash = "", ""
+	m.StrategyKind = StrategyKindSlowMomentum
+	m.SlowMomentum = &config
+	m.Limits.MaxPositions = config.TopK
 	if err := m.freeze(); err != nil {
 		return Manifest{}, err
 	}
@@ -259,12 +326,24 @@ func (m Manifest) Validate() error {
 	if !positive(l.InitialCapital) || !percent(l.RiskPerTradePercent) || !percent(l.MaxPositionPercent) || l.MaxPositions < 1 || !percent(l.MaxAggregateRiskPct) {
 		return fmt.Errorf("portfolio: invalid limits")
 	}
-	r := m.RelativeStrength
-	if r.ReturnLookbackDays < 2 || r.VolatilityDays < 2 || r.ATRDays < 2 || !positive(r.StopATR) || r.TopK < 1 || r.ExitRank < r.TopK || r.BTCEMADays < 2 || r.MinPositiveBreadth < 0 || r.MinPositiveBreadth > 1 || r.RebalanceWeekday < time.Sunday || r.RebalanceWeekday > time.Saturday || r.RegimeMode.Validate() != nil || r.EntryMode.Validate() != nil {
-		return fmt.Errorf("portfolio: invalid relative-strength config")
+	if err := m.StrategyKind.Validate(); err != nil {
+		return err
 	}
-	if r.EntryMode.normalized() == EntryModeTrendPullback && (r.PullbackEMADays < 2 || !positive(r.MaxEntryDistanceATR)) {
-		return fmt.Errorf("portfolio: invalid pullback entry config")
+	if m.StrategyKind.normalized() == StrategyKindSlowMomentum {
+		if m.SlowMomentum == nil || m.SlowMomentum.Validate() != nil || m.Limits.MaxPositions != m.SlowMomentum.TopK {
+			return fmt.Errorf("portfolio: invalid slow momentum manifest")
+		}
+	} else {
+		if m.SlowMomentum != nil {
+			return fmt.Errorf("portfolio: relative-strength manifest must not include slow momentum config")
+		}
+		r := m.RelativeStrength
+		if r.ReturnLookbackDays < 2 || r.VolatilityDays < 2 || r.ATRDays < 2 || !positive(r.StopATR) || r.TopK < 1 || r.ExitRank < r.TopK || r.BTCEMADays < 2 || r.MinPositiveBreadth < 0 || r.MinPositiveBreadth > 1 || r.RebalanceWeekday < time.Sunday || r.RebalanceWeekday > time.Saturday || r.RegimeMode.Validate() != nil || r.EntryMode.Validate() != nil {
+			return fmt.Errorf("portfolio: invalid relative-strength config")
+		}
+		if r.EntryMode.normalized() == EntryModeTrendPullback && (r.PullbackEMADays < 2 || !positive(r.MaxEntryDistanceATR)) {
+			return fmt.Errorf("portfolio: invalid pullback entry config")
+		}
 	}
 	if !finite(m.Gates.MinNetReturn) || !finite(m.Gates.MaxDrawdown) || m.Gates.MaxDrawdown <= 0 || !finite(m.Gates.MaxContribution) || m.Gates.MaxContribution <= 0 || m.Gates.MaxContribution > 1 {
 		return fmt.Errorf("portfolio: invalid gates")

@@ -154,6 +154,31 @@ RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0
 CLI фиксирует границы в manifest через `--start YYYY-MM-DD --end YYYY-MM-DD`;
 он отклоняет диапазон за пределами development-горизонта исходного исследования.
 
+## Portfolio: slow cross-sectional momentum
+
+`slow-cross-sectional-momentum-v1` не использует старый risk-adjusted ranking,
+BTC/breadth regime или pullback-entry. По понедельникам он сортирует монеты
+только по завершённой доходности за `60` или `90` дней, берёт top-`5` или
+top-`10` только с положительной доходностью и полностью перебалансирует
+портфель равными весами (`20%` или `10%`). Если положительных монет нет,
+стратегия остаётся в USDT. Внутринедельного stop нет: состав пересматривается
+только на следующей недельной ребалансировке.
+
+Скрипт выполняет четыре заранее зафиксированных кандидата на пяти
+непересекающихся development-окнах. Locked holdout не открывается, а
+`summary.json` не выбирает победителя автоматически:
+
+```bash
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  ./scripts/run_portfolio_slow_momentum_walk_forward.sh
+```
+
+Перед запуском нужен чистый закоммиченный worktree и свежий CLI:
+
+```bash
+make build-cli
+```
+
 Незавершённые run-директории старых revisions можно сначала посмотреть, а
 затем явно удалить:
 

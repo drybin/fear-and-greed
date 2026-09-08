@@ -50,6 +50,106 @@ func TestRelativeStrengthUsesOnlyCompletedPreRebalanceBarsAndBreaksTies(t *testi
 	require.Equal(t, original, after, "the fill-day candle must not influence its own ranking")
 }
 
+func TestSlowMomentumUsesOnlyCompletedPreRebalanceBars(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 110, 100, .001),
+		"AAAUSDT": syntheticBars(start, 110, 100, .006),
+		"BBBUSDT": syntheticBars(start, 110, 100, .005),
+		"CCCUSDT": syntheticBars(start, 110, 100, .004),
+		"DDDUSDT": syntheticBars(start, 110, 100, .003),
+		"EEEUSDT": syntheticBars(start, 110, 100, .002),
+		"FFFUSDT": syntheticBars(start, 110, 100, -.002),
+	}
+	cfg := SlowMomentumConfig{LookbackDays: 60, TopK: 5, RebalanceWeekday: time.Monday}
+	fill := firstWeekdayAfter(start.Add(65*24*time.Hour), time.Monday)
+	before, err := SlowMomentumRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	require.Len(t, before[0].Targets, 5)
+	require.Equal(t, protocolv2.Symbol("AAAUSDT"), before[0].Targets[0].Symbol)
+	require.Equal(t, 20.0, before[0].Targets[0].TargetWeightPercent)
+
+	changed := cloneDailyBars(bars)
+	index := int(fill.Sub(start) / (24 * time.Hour))
+	changed["FFFUSDT"][index].Close *= 100
+	changed["FFFUSDT"][index].High = changed["FFFUSDT"][index].Close
+	after, err := SlowMomentumRebalances(changed, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, before, after, "the fill-day candle must not affect its own ranking")
+}
+
+func TestSlowMomentumStaysInCashWithoutPositiveCandidates(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 110, 100, -.001),
+		"AAAUSDT": syntheticBars(start, 110, 100, -.002),
+		"BBBUSDT": syntheticBars(start, 110, 100, -.003),
+	}
+	fill := firstWeekdayAfter(start.Add(65*24*time.Hour), time.Monday)
+	events, err := SlowMomentumRebalances(bars, SlowMomentumConfig{LookbackDays: 60, TopK: 5, RebalanceWeekday: time.Monday}, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].RegimeOn)
+	require.Empty(t, events[0].Targets)
+	require.Empty(t, events[0].Retain)
+}
+
+func TestEngineSupportsEqualWeightRebalanceWithoutStop(t *testing.T) {
+	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{}
+	targets := make([]Rank, 0, 5)
+	for _, symbol := range []protocolv2.Symbol{"AAAUSDT", "BBBUSDT", "CCCUSDT", "DDDUSDT", "EEEUSDT"} {
+		bars[symbol] = []DailyBar{{Time: day, Open: 100, High: 101, Low: 90, Close: 100}, {Time: day.Add(24 * time.Hour), Open: 100, High: 101, Low: 90, Close: 100}}
+		targets = append(targets, Rank{Symbol: symbol, Rank: len(targets) + 1, TargetWeightPercent: 20})
+	}
+	limits := Limits{InitialCapital: 10_000, RiskPerTradePercent: 1, MaxPositionPercent: 20, MaxPositions: 5, MaxAggregateRiskPct: 5}
+	result, err := (Engine{Limits: limits}).Run(bars, []Rebalance{{FillTime: day, RegimeOn: true, Targets: targets, Retain: map[protocolv2.Symbol]bool{}}}, day, day.Add(48*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result.Decisions, 5)
+	require.Len(t, result.Trades, 5)
+	for _, decision := range result.Decisions {
+		require.True(t, decision.Accepted)
+	}
+	for _, trade := range result.Trades {
+		require.Equal(t, "fold_end", trade.Reason)
+	}
+}
+
+func TestEngineRebalancesExistingEqualWeightPositions(t *testing.T) {
+	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"AAAUSDT": {{Time: day, Open: 100, High: 101, Low: 99, Close: 100}, {Time: day.Add(7 * 24 * time.Hour), Open: 110, High: 111, Low: 109, Close: 110}},
+	}
+	target := Rank{Symbol: "AAAUSDT", Rank: 1, TargetWeightPercent: 20}
+	limits := Limits{InitialCapital: 10_000, RiskPerTradePercent: 1, MaxPositionPercent: 20, MaxPositions: 5, MaxAggregateRiskPct: 5}
+	events := []Rebalance{
+		{FillTime: day, RegimeOn: true, ReplaceAll: true, Targets: []Rank{target}, Retain: map[protocolv2.Symbol]bool{"AAAUSDT": true}},
+		{FillTime: day.Add(7 * 24 * time.Hour), RegimeOn: true, ReplaceAll: true, Targets: []Rank{target}, Retain: map[protocolv2.Symbol]bool{"AAAUSDT": true}},
+	}
+	result, err := (Engine{Limits: limits}).Run(bars, events, day, day.Add(8*24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result.Decisions, 2)
+	require.Len(t, result.Trades, 2)
+	require.Equal(t, "rebalance", result.Trades[0].Reason)
+}
+
+func firstWeekdayAfter(start time.Time, weekday time.Weekday) time.Time {
+	for day := start; ; day = day.Add(24 * time.Hour) {
+		if day.Weekday() == weekday {
+			return day
+		}
+	}
+}
+
+func cloneDailyBars(in map[protocolv2.Symbol][]DailyBar) map[protocolv2.Symbol][]DailyBar {
+	out := make(map[protocolv2.Symbol][]DailyBar, len(in))
+	for symbol, series := range in {
+		out[symbol] = append([]DailyBar(nil), series...)
+	}
+	return out
+}
+
 func TestRegimeModesEnableOnlyTheirFrozenFilters(t *testing.T) {
 	tests := []struct {
 		name            string
