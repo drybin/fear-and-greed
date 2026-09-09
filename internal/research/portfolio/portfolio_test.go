@@ -95,6 +95,83 @@ func TestSlowMomentumStaysInCashWithoutPositiveCandidates(t *testing.T) {
 	require.Empty(t, events[0].Retain)
 }
 
+func TestDefensiveSlowMomentumUsesOnlyCompletedPreFillBars(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 240, 100, .003),
+		"AAAUSDT": syntheticBars(start, 240, 100, .006),
+		"BBBUSDT": syntheticBars(start, 240, 100, .005),
+		"CCCUSDT": syntheticBars(start, 240, 100, .004),
+		"DDDUSDT": syntheticBars(start, 240, 100, .003),
+		"EEEUSDT": syntheticBars(start, 240, 100, .002),
+	}
+	cfg := DefensiveSlowMomentumConfig{SlowMomentum: SlowMomentumConfig{LookbackDays: 60, TopK: 5, RebalanceWeekday: time.Monday}, BTCEMADays: 200, MinPositiveBreadth: .5}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	before, err := DefensiveSlowMomentumRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	require.True(t, before[0].RegimeOn)
+	require.Len(t, before[0].Targets, 5)
+
+	changed := cloneDailyBars(bars)
+	index := int(fill.Sub(start) / (24 * time.Hour))
+	changed["BTCUSDT"][index].Close = 1
+	changed["AAAUSDT"][index].Close = 1
+	after, err := DefensiveSlowMomentumRebalances(changed, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, before, after, "the fill-day candles must not affect their own guard or ranking")
+}
+
+func TestDefensiveSlowMomentumExitsOnNextDayAfterBTCBreakdown(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 240, 100, .003),
+		"AAAUSDT": syntheticBars(start, 240, 100, .006),
+		"BBBUSDT": syntheticBars(start, 240, 100, .005),
+		"CCCUSDT": syntheticBars(start, 240, 100, .004),
+		"DDDUSDT": syntheticBars(start, 240, 100, .003),
+		"EEEUSDT": syntheticBars(start, 240, 100, .002),
+	}
+	cfg := DefensiveSlowMomentumConfig{SlowMomentum: SlowMomentumConfig{LookbackDays: 60, TopK: 5, RebalanceWeekday: time.Monday}, BTCEMADays: 200, MinPositiveBreadth: .5}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	index := int(fill.Sub(start) / (24 * time.Hour))
+	bars["BTCUSDT"][index].Close = 1
+
+	events, err := DefensiveSlowMomentumRebalances(bars, cfg, fill, fill.Add(48*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	require.True(t, events[0].RegimeOn, "Monday cannot see its own close")
+	require.Len(t, events[0].Targets, 5)
+	require.False(t, events[1].RegimeOn, "Tuesday sees Monday's completed breakdown")
+	require.True(t, events[1].ReplaceAll)
+	require.Empty(t, events[1].Targets)
+}
+
+func TestDefensiveSlowMomentumBlocksWeakBreadth(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 240, 100, .003),
+		"AAAUSDT": syntheticBars(start, 240, 100, .006),
+		"BBBUSDT": syntheticBars(start, 240, 100, .005),
+		"CCCUSDT": syntheticBars(start, 240, 100, .004),
+		"DDDUSDT": syntheticBars(start, 240, 100, -.002),
+		"EEEUSDT": syntheticBars(start, 240, 100, -.003),
+		"FFFUSDT": syntheticBars(start, 240, 100, -.004),
+		"GGGUSDT": syntheticBars(start, 240, 100, -.005),
+		"HHHUSDT": syntheticBars(start, 240, 100, -.006),
+		"IIIUSDT": syntheticBars(start, 240, 100, -.007),
+	}
+	cfg := DefensiveSlowMomentumConfig{SlowMomentum: SlowMomentumConfig{LookbackDays: 60, TopK: 5, RebalanceWeekday: time.Monday}, BTCEMADays: 200, MinPositiveBreadth: .5}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	events, err := DefensiveSlowMomentumRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].BTCAboveEMA)
+	require.Less(t, events[0].PositiveBreadth, .5)
+	require.False(t, events[0].RegimeOn)
+	require.Empty(t, events[0].Targets)
+}
+
 func TestEngineSupportsEqualWeightRebalanceWithoutStop(t *testing.T) {
 	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
 	bars := map[protocolv2.Symbol][]DailyBar{}

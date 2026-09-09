@@ -17,11 +17,12 @@ import (
 )
 
 const (
-	ManifestSchemaVersion = "portfolio.manifest.v1"
-	ReportSchemaVersion   = "portfolio.report.v1"
-	StrategyCode          = "relative-strength-long-v1"
-	StrategyVersion       = "v1.0.0"
-	SlowMomentumCode      = "slow-cross-sectional-momentum-v1"
+	ManifestSchemaVersion     = "portfolio.manifest.v1"
+	ReportSchemaVersion       = "portfolio.report.v1"
+	StrategyCode              = "relative-strength-long-v1"
+	StrategyVersion           = "v1.0.0"
+	SlowMomentumCode          = "slow-cross-sectional-momentum-v1"
+	DefensiveSlowMomentumCode = "defensive-slow-momentum-v1"
 )
 
 // StrategyKind distinguishes portfolio hypotheses without changing legacy
@@ -30,13 +31,14 @@ const (
 type StrategyKind string
 
 const (
-	StrategyKindRelativeStrength StrategyKind = "relative-strength"
-	StrategyKindSlowMomentum     StrategyKind = "slow-cross-sectional-momentum-v1"
+	StrategyKindRelativeStrength      StrategyKind = "relative-strength"
+	StrategyKindSlowMomentum          StrategyKind = "slow-cross-sectional-momentum-v1"
+	StrategyKindDefensiveSlowMomentum StrategyKind = "defensive-slow-momentum-v1"
 )
 
 func (k StrategyKind) Validate() error {
 	switch k {
-	case "", StrategyKindRelativeStrength, StrategyKindSlowMomentum:
+	case "", StrategyKindRelativeStrength, StrategyKindSlowMomentum, StrategyKindDefensiveSlowMomentum:
 		return nil
 	default:
 		return fmt.Errorf("portfolio: invalid strategy kind %q", k)
@@ -157,6 +159,25 @@ func (c SlowMomentumConfig) Validate() error {
 	return nil
 }
 
+// DefensiveSlowMomentumConfig keeps slow momentum in cash when the completed
+// daily market regime is unhealthy. These values are intentionally fixed for
+// the experiment rather than exposed as a second optimization grid.
+type DefensiveSlowMomentumConfig struct {
+	SlowMomentum       SlowMomentumConfig `json:"slow_momentum"`
+	BTCEMADays         int                `json:"btc_ema_days"`
+	MinPositiveBreadth float64            `json:"min_positive_breadth"`
+}
+
+func (c DefensiveSlowMomentumConfig) Validate() error {
+	if err := c.SlowMomentum.Validate(); err != nil {
+		return err
+	}
+	if c.BTCEMADays != 200 || c.MinPositiveBreadth != .5 {
+		return fmt.Errorf("portfolio: invalid defensive slow momentum config")
+	}
+	return nil
+}
+
 type Gates struct {
 	MinNetReturn           float64 `json:"min_net_return"`
 	MaxDrawdown            float64 `json:"max_drawdown"`
@@ -167,23 +188,24 @@ type Gates struct {
 }
 
 type Manifest struct {
-	SchemaVersion          string                    `json:"schema_version"`
-	ID                     protocolv2.ExperimentID   `json:"id"`
-	Hash                   protocolv2.SHA256Hex      `json:"hash"`
-	ImplementationRevision string                    `json:"implementation_revision"`
-	SourceExperiment       protocolv2.ExperimentID   `json:"source_experiment"`
-	SourceManifestHash     protocolv2.SHA256Hex      `json:"source_manifest_hash"`
-	Diagnostic             bool                      `json:"diagnostic"`
-	SignalArtifacts        []SignalArtifactRef       `json:"signal_artifacts,omitempty"`
-	Universe               manifest.UniverseSnapshot `json:"universe"`
-	Range                  protocolv2.TimeRange      `json:"range"`
-	BaseCosts              CostProfile               `json:"base_costs"`
-	StressCosts            CostProfile               `json:"stress_costs"`
-	Limits                 Limits                    `json:"limits"`
-	StrategyKind           StrategyKind              `json:"strategy_kind,omitempty"`
-	RelativeStrength       RelativeStrengthConfig    `json:"relative_strength"`
-	SlowMomentum           *SlowMomentumConfig       `json:"slow_momentum,omitempty"`
-	Gates                  Gates                     `json:"gates"`
+	SchemaVersion          string                       `json:"schema_version"`
+	ID                     protocolv2.ExperimentID      `json:"id"`
+	Hash                   protocolv2.SHA256Hex         `json:"hash"`
+	ImplementationRevision string                       `json:"implementation_revision"`
+	SourceExperiment       protocolv2.ExperimentID      `json:"source_experiment"`
+	SourceManifestHash     protocolv2.SHA256Hex         `json:"source_manifest_hash"`
+	Diagnostic             bool                         `json:"diagnostic"`
+	SignalArtifacts        []SignalArtifactRef          `json:"signal_artifacts,omitempty"`
+	Universe               manifest.UniverseSnapshot    `json:"universe"`
+	Range                  protocolv2.TimeRange         `json:"range"`
+	BaseCosts              CostProfile                  `json:"base_costs"`
+	StressCosts            CostProfile                  `json:"stress_costs"`
+	Limits                 Limits                       `json:"limits"`
+	StrategyKind           StrategyKind                 `json:"strategy_kind,omitempty"`
+	RelativeStrength       RelativeStrengthConfig       `json:"relative_strength"`
+	SlowMomentum           *SlowMomentumConfig          `json:"slow_momentum,omitempty"`
+	DefensiveSlowMomentum  *DefensiveSlowMomentumConfig `json:"defensive_slow_momentum,omitempty"`
+	Gates                  Gates                        `json:"gates"`
 }
 
 func DefaultManifest(source manifest.Manifest, revision string, diagnostic bool, regimeMode RegimeMode, entryMode EntryMode, requestedRange *protocolv2.TimeRange) (Manifest, error) {
@@ -225,6 +247,26 @@ func DefaultSlowMomentumManifest(source manifest.Manifest, revision string, diag
 	m.StrategyKind = StrategyKindSlowMomentum
 	m.SlowMomentum = &config
 	m.Limits.MaxPositions = config.TopK
+	if err := m.freeze(); err != nil {
+		return Manifest{}, err
+	}
+	return m, nil
+}
+
+// DefaultDefensiveSlowMomentumManifest freezes the daily risk-off version as
+// a separate hypothesis, preserving both legacy and plain slow-momentum IDs.
+func DefaultDefensiveSlowMomentumManifest(source manifest.Manifest, revision string, diagnostic bool, config DefensiveSlowMomentumConfig, requestedRange *protocolv2.TimeRange) (Manifest, error) {
+	if err := config.Validate(); err != nil {
+		return Manifest{}, err
+	}
+	m, err := DefaultSlowMomentumManifest(source, revision, diagnostic, config.SlowMomentum, requestedRange)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m.ID, m.Hash = "", ""
+	m.StrategyKind = StrategyKindDefensiveSlowMomentum
+	m.SlowMomentum = nil
+	m.DefensiveSlowMomentum = &config
 	if err := m.freeze(); err != nil {
 		return Manifest{}, err
 	}
@@ -329,12 +371,23 @@ func (m Manifest) Validate() error {
 	if err := m.StrategyKind.Validate(); err != nil {
 		return err
 	}
-	if m.StrategyKind.normalized() == StrategyKindSlowMomentum {
+	switch m.StrategyKind.normalized() {
+	case StrategyKindSlowMomentum:
 		if m.SlowMomentum == nil || m.SlowMomentum.Validate() != nil || m.Limits.MaxPositions != m.SlowMomentum.TopK {
 			return fmt.Errorf("portfolio: invalid slow momentum manifest")
 		}
-	} else {
+		if m.DefensiveSlowMomentum != nil {
+			return fmt.Errorf("portfolio: slow momentum manifest must not include defensive config")
+		}
+	case StrategyKindDefensiveSlowMomentum:
+		if m.DefensiveSlowMomentum == nil || m.DefensiveSlowMomentum.Validate() != nil || m.Limits.MaxPositions != m.DefensiveSlowMomentum.SlowMomentum.TopK {
+			return fmt.Errorf("portfolio: invalid defensive slow momentum manifest")
+		}
 		if m.SlowMomentum != nil {
+			return fmt.Errorf("portfolio: defensive slow momentum manifest must not include plain slow momentum config")
+		}
+	default:
+		if m.SlowMomentum != nil || m.DefensiveSlowMomentum != nil {
 			return fmt.Errorf("portfolio: relative-strength manifest must not include slow momentum config")
 		}
 		r := m.RelativeStrength

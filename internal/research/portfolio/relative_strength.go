@@ -156,20 +156,12 @@ func SlowMomentumRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg SlowMomen
 		}
 		ranking := make([]Rank, 0, len(bars))
 		for symbol, series := range bars {
-			rank, ok := slowMomentumScore(symbol, completedBefore(series, fill.Time), cfg.LookbackDays)
-			if ok {
+			rank, ok := slowMomentumReturn(symbol, completedBefore(series, fill.Time), cfg.LookbackDays)
+			if ok && rank.EntryEligible {
 				ranking = append(ranking, rank)
 			}
 		}
-		sort.Slice(ranking, func(i, j int) bool {
-			if ranking[i].Return != ranking[j].Return {
-				return ranking[i].Return > ranking[j].Return
-			}
-			return ranking[i].Symbol < ranking[j].Symbol
-		})
-		for i := range ranking {
-			ranking[i].Rank = i + 1
-		}
+		sortSlowMomentumRanks(ranking)
 		event := Rebalance{FillTime: fill.Time, RegimeOn: true, ReplaceAll: true, Retain: map[protocolv2.Symbol]bool{}, Ranking: ranking}
 		for _, rank := range ranking {
 			if rank.Rank > cfg.TopK {
@@ -184,7 +176,70 @@ func SlowMomentumRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg SlowMomen
 	return events, nil
 }
 
-func slowMomentumScore(symbol protocolv2.Symbol, history []DailyBar, lookback int) (Rank, bool) {
+// DefensiveSlowMomentumRebalances ranks completed raw returns each Monday as
+// slow momentum does, but evaluates a completed-day BTC and breadth guard at
+// every daily open. A failed guard emits a cash event immediately; a healthy
+// non-Monday emits nothing, so existing holdings are left untouched.
+func DefensiveSlowMomentumRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg DefensiveSlowMomentumConfig, evaluationStart, evaluationEnd time.Time) ([]Rebalance, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	calendar := bars["BTCUSDT"]
+	if len(calendar) == 0 {
+		return nil, fmt.Errorf("portfolio: BTCUSDT is required for defensive slow momentum")
+	}
+	events := make([]Rebalance, 0)
+	for _, fill := range calendar {
+		if fill.Time.Before(evaluationStart) || !fill.Time.Before(evaluationEnd) {
+			continue
+		}
+		btcHistory := completedBefore(calendar, fill.Time)
+		event := Rebalance{FillTime: fill.Time, ReplaceAll: true, Retain: map[protocolv2.Symbol]bool{}}
+		if len(btcHistory) < cfg.BTCEMADays {
+			events = append(events, event)
+			continue
+		}
+		btcEMA := emaClose(btcHistory[len(btcHistory)-cfg.BTCEMADays:], cfg.BTCEMADays)
+		event.BTCAboveEMA = btcHistory[len(btcHistory)-1].Close > btcEMA
+		ranking := make([]Rank, 0, len(bars))
+		positiveReturns := 0
+		for symbol, series := range bars {
+			rank, ok := slowMomentumReturn(symbol, completedBefore(series, fill.Time), cfg.SlowMomentum.LookbackDays)
+			if !ok {
+				continue
+			}
+			if rank.EntryEligible {
+				positiveReturns++
+			}
+			ranking = append(ranking, rank)
+		}
+		if len(ranking) > 0 {
+			event.PositiveBreadth = float64(positiveReturns) / float64(len(ranking))
+			sortSlowMomentumRanks(ranking)
+			event.Ranking = ranking
+		}
+		event.RegimeOn = event.BTCAboveEMA && event.PositiveBreadth >= cfg.MinPositiveBreadth
+		if !event.RegimeOn {
+			events = append(events, event)
+			continue
+		}
+		if fill.Time.Weekday() != cfg.SlowMomentum.RebalanceWeekday {
+			continue
+		}
+		for _, rank := range ranking {
+			if !rank.EntryEligible || len(event.Targets) == cfg.SlowMomentum.TopK {
+				break
+			}
+			rank.TargetWeightPercent = 100 / float64(cfg.SlowMomentum.TopK)
+			event.Targets = append(event.Targets, rank)
+			event.Retain[rank.Symbol] = true
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func slowMomentumReturn(symbol protocolv2.Symbol, history []DailyBar, lookback int) (Rank, bool) {
 	if len(history) < lookback+1 {
 		return Rank{}, false
 	}
@@ -193,10 +248,19 @@ func slowMomentumScore(symbol protocolv2.Symbol, history []DailyBar, lookback in
 		return Rank{}, false
 	}
 	ret := last/base - 1
-	if ret <= 0 {
-		return Rank{}, false
+	return Rank{Symbol: symbol, Score: protocolv2.RoundMetric(ret), Return: protocolv2.RoundMetric(ret), EntryEligible: ret > 0}, true
+}
+
+func sortSlowMomentumRanks(ranking []Rank) {
+	sort.Slice(ranking, func(i, j int) bool {
+		if ranking[i].Return != ranking[j].Return {
+			return ranking[i].Return > ranking[j].Return
+		}
+		return ranking[i].Symbol < ranking[j].Symbol
+	})
+	for i := range ranking {
+		ranking[i].Rank = i + 1
 	}
-	return Rank{Symbol: symbol, Score: protocolv2.RoundMetric(ret), Return: protocolv2.RoundMetric(ret), EntryEligible: true}, true
 }
 
 func regimeEnabled(mode RegimeMode, btcAboveEMA, breadthPositive bool) bool {
