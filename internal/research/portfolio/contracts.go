@@ -23,6 +23,7 @@ const (
 	StrategyVersion           = "v1.0.0"
 	SlowMomentumCode          = "slow-cross-sectional-momentum-v1"
 	DefensiveSlowMomentumCode = "defensive-slow-momentum-v1"
+	LowVolatilityTrendCode    = "low-volatility-trend-v1"
 )
 
 // StrategyKind distinguishes portfolio hypotheses without changing legacy
@@ -34,11 +35,12 @@ const (
 	StrategyKindRelativeStrength      StrategyKind = "relative-strength"
 	StrategyKindSlowMomentum          StrategyKind = "slow-cross-sectional-momentum-v1"
 	StrategyKindDefensiveSlowMomentum StrategyKind = "defensive-slow-momentum-v1"
+	StrategyKindLowVolatilityTrend    StrategyKind = "low-volatility-trend-v1"
 )
 
 func (k StrategyKind) Validate() error {
 	switch k {
-	case "", StrategyKindRelativeStrength, StrategyKindSlowMomentum, StrategyKindDefensiveSlowMomentum:
+	case "", StrategyKindRelativeStrength, StrategyKindSlowMomentum, StrategyKindDefensiveSlowMomentum, StrategyKindLowVolatilityTrend:
 		return nil
 	default:
 		return fmt.Errorf("portfolio: invalid strategy kind %q", k)
@@ -168,6 +170,24 @@ type DefensiveSlowMomentumConfig struct {
 	MinPositiveBreadth float64            `json:"min_positive_breadth"`
 }
 
+// LowVolatilityTrendConfig is a separate quality-trend hypothesis. It ranks
+// eligible symbols by realized volatility, not by relative-strength return.
+type LowVolatilityTrendConfig struct {
+	TrendEMADays       int          `json:"trend_ema_days"`
+	ReturnLookbackDays int          `json:"return_lookback_days"`
+	VolatilityDays     int          `json:"volatility_days"`
+	TopK               int          `json:"top_k"`
+	RebalanceWeekday   time.Weekday `json:"rebalance_weekday"`
+}
+
+func (c LowVolatilityTrendConfig) Validate() error {
+	if c.TrendEMADays != 200 || c.ReturnLookbackDays != 20 || c.VolatilityDays != 30 ||
+		(c.TopK != 5 && c.TopK != 10) || c.RebalanceWeekday != time.Monday {
+		return fmt.Errorf("portfolio: invalid low volatility trend config")
+	}
+	return nil
+}
+
 func (c DefensiveSlowMomentumConfig) Validate() error {
 	if err := c.SlowMomentum.Validate(); err != nil {
 		return err
@@ -205,6 +225,7 @@ type Manifest struct {
 	RelativeStrength       RelativeStrengthConfig       `json:"relative_strength"`
 	SlowMomentum           *SlowMomentumConfig          `json:"slow_momentum,omitempty"`
 	DefensiveSlowMomentum  *DefensiveSlowMomentumConfig `json:"defensive_slow_momentum,omitempty"`
+	LowVolatilityTrend     *LowVolatilityTrendConfig    `json:"low_volatility_trend,omitempty"`
 	Gates                  Gates                        `json:"gates"`
 }
 
@@ -267,6 +288,26 @@ func DefaultDefensiveSlowMomentumManifest(source manifest.Manifest, revision str
 	m.StrategyKind = StrategyKindDefensiveSlowMomentum
 	m.SlowMomentum = nil
 	m.DefensiveSlowMomentum = &config
+	if err := m.freeze(); err != nil {
+		return Manifest{}, err
+	}
+	return m, nil
+}
+
+// DefaultLowVolatilityTrendManifest freezes a portfolio-native quality-trend
+// candidate without changing the identity of any previous experiment.
+func DefaultLowVolatilityTrendManifest(source manifest.Manifest, revision string, diagnostic bool, config LowVolatilityTrendConfig, requestedRange *protocolv2.TimeRange) (Manifest, error) {
+	if err := config.Validate(); err != nil {
+		return Manifest{}, err
+	}
+	m, err := DefaultManifest(source, revision, diagnostic, RegimeModeNone, EntryModeWeeklyOpen, requestedRange)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m.ID, m.Hash = "", ""
+	m.StrategyKind = StrategyKindLowVolatilityTrend
+	m.LowVolatilityTrend = &config
+	m.Limits.MaxPositions = config.TopK
 	if err := m.freeze(); err != nil {
 		return Manifest{}, err
 	}
@@ -376,18 +417,25 @@ func (m Manifest) Validate() error {
 		if m.SlowMomentum == nil || m.SlowMomentum.Validate() != nil || m.Limits.MaxPositions != m.SlowMomentum.TopK {
 			return fmt.Errorf("portfolio: invalid slow momentum manifest")
 		}
-		if m.DefensiveSlowMomentum != nil {
+		if m.DefensiveSlowMomentum != nil || m.LowVolatilityTrend != nil {
 			return fmt.Errorf("portfolio: slow momentum manifest must not include defensive config")
 		}
 	case StrategyKindDefensiveSlowMomentum:
 		if m.DefensiveSlowMomentum == nil || m.DefensiveSlowMomentum.Validate() != nil || m.Limits.MaxPositions != m.DefensiveSlowMomentum.SlowMomentum.TopK {
 			return fmt.Errorf("portfolio: invalid defensive slow momentum manifest")
 		}
-		if m.SlowMomentum != nil {
+		if m.SlowMomentum != nil || m.LowVolatilityTrend != nil {
 			return fmt.Errorf("portfolio: defensive slow momentum manifest must not include plain slow momentum config")
 		}
-	default:
+	case StrategyKindLowVolatilityTrend:
+		if m.LowVolatilityTrend == nil || m.LowVolatilityTrend.Validate() != nil || m.Limits.MaxPositions != m.LowVolatilityTrend.TopK {
+			return fmt.Errorf("portfolio: invalid low volatility trend manifest")
+		}
 		if m.SlowMomentum != nil || m.DefensiveSlowMomentum != nil {
+			return fmt.Errorf("portfolio: low volatility trend manifest must not include momentum config")
+		}
+	default:
+		if m.SlowMomentum != nil || m.DefensiveSlowMomentum != nil || m.LowVolatilityTrend != nil {
 			return fmt.Errorf("portfolio: relative-strength manifest must not include slow momentum config")
 		}
 		r := m.RelativeStrength

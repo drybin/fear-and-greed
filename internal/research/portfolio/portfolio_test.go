@@ -172,6 +172,50 @@ func TestDefensiveSlowMomentumBlocksWeakBreadth(t *testing.T) {
 	require.Empty(t, events[0].Targets)
 }
 
+func TestLowVolatilityTrendUsesOnlyCompletedPreRebalanceBars(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 240, 100, .003),
+		"AAAUSDT": syntheticBars(start, 240, 100, .006),
+		"BBBUSDT": syntheticBars(start, 240, 100, .005),
+		"CCCUSDT": syntheticBars(start, 240, 100, .004),
+		"DDDUSDT": syntheticBars(start, 240, 100, .003),
+		"EEEUSDT": syntheticBars(start, 240, 100, .002),
+		"FFFUSDT": syntheticBars(start, 240, 100, .001),
+	}
+	cfg := LowVolatilityTrendConfig{TrendEMADays: 200, ReturnLookbackDays: 20, VolatilityDays: 30, TopK: 5, RebalanceWeekday: time.Monday}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	before, err := LowVolatilityTrendRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	require.Len(t, before[0].Targets, 5)
+
+	changed := cloneDailyBars(bars)
+	index := int(fill.Sub(start) / (24 * time.Hour))
+	changed["FFFUSDT"][index].Close *= 100
+	changed["FFFUSDT"][index].High = changed["FFFUSDT"][index].Close
+	after, err := LowVolatilityTrendRebalances(changed, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, before, after, "the fill-day candle must not affect its own trend, volatility, or rank")
+}
+
+func TestLowVolatilityTrendStaysInCashWithoutEligibleSymbols(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 240, 100, -.001),
+		"AAAUSDT": syntheticBars(start, 240, 100, -.002),
+		"BBBUSDT": syntheticBars(start, 240, 100, -.003),
+	}
+	cfg := LowVolatilityTrendConfig{TrendEMADays: 200, ReturnLookbackDays: 20, VolatilityDays: 30, TopK: 5, RebalanceWeekday: time.Monday}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	events, err := LowVolatilityTrendRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].RegimeOn)
+	require.Empty(t, events[0].Targets)
+	require.Empty(t, events[0].Retain)
+}
+
 func TestEngineSupportsEqualWeightRebalanceWithoutStop(t *testing.T) {
 	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
 	bars := map[protocolv2.Symbol][]DailyBar{}

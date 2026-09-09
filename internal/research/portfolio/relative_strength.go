@@ -239,6 +239,85 @@ func DefensiveSlowMomentumRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg 
 	return events, nil
 }
 
+// LowVolatilityTrendRebalances selects only symbols with a positive completed
+// short trend above their own long EMA, then ranks that eligible set by the
+// lowest completed realized volatility. It deliberately has no market-wide
+// regime filter and replaces the full equal-weight basket each Monday.
+func LowVolatilityTrendRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg LowVolatilityTrendConfig, evaluationStart, evaluationEnd time.Time) ([]Rebalance, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	calendar := bars["BTCUSDT"]
+	if len(calendar) == 0 {
+		return nil, fmt.Errorf("portfolio: BTCUSDT is required for low volatility trend calendar")
+	}
+	events := make([]Rebalance, 0)
+	for _, fill := range calendar {
+		if fill.Time.Before(evaluationStart) || !fill.Time.Before(evaluationEnd) || fill.Time.Weekday() != cfg.RebalanceWeekday {
+			continue
+		}
+		ranking := make([]Rank, 0, len(bars))
+		for symbol, series := range bars {
+			rank, ok := lowVolatilityTrendScore(symbol, completedBefore(series, fill.Time), cfg)
+			if ok {
+				ranking = append(ranking, rank)
+			}
+		}
+		sort.Slice(ranking, func(i, j int) bool {
+			if ranking[i].Volatility != ranking[j].Volatility {
+				return ranking[i].Volatility < ranking[j].Volatility
+			}
+			if ranking[i].Return != ranking[j].Return {
+				return ranking[i].Return > ranking[j].Return
+			}
+			return ranking[i].Symbol < ranking[j].Symbol
+		})
+		for i := range ranking {
+			ranking[i].Rank = i + 1
+		}
+		event := Rebalance{FillTime: fill.Time, RegimeOn: true, ReplaceAll: true, Retain: map[protocolv2.Symbol]bool{}, Ranking: ranking}
+		for _, rank := range ranking {
+			if len(event.Targets) == cfg.TopK {
+				break
+			}
+			rank.TargetWeightPercent = 100 / float64(cfg.TopK)
+			event.Targets = append(event.Targets, rank)
+			event.Retain[rank.Symbol] = true
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func lowVolatilityTrendScore(symbol protocolv2.Symbol, history []DailyBar, cfg LowVolatilityTrendConfig) (Rank, bool) {
+	need := maxInt(cfg.TrendEMADays, cfg.ReturnLookbackDays+1, cfg.VolatilityDays+1)
+	if len(history) < need {
+		return Rank{}, false
+	}
+	last := history[len(history)-1].Close
+	base := history[len(history)-1-cfg.ReturnLookbackDays].Close
+	if !positive(last) || !positive(base) {
+		return Rank{}, false
+	}
+	trendEMA := emaClose(history[len(history)-cfg.TrendEMADays:], cfg.TrendEMADays)
+	ret := last/base - 1
+	if last <= trendEMA || ret <= 0 {
+		return Rank{}, false
+	}
+	returns := make([]float64, 0, cfg.VolatilityDays)
+	for i := len(history) - cfg.VolatilityDays; i < len(history); i++ {
+		if i == 0 || !positive(history[i-1].Close) {
+			return Rank{}, false
+		}
+		returns = append(returns, math.Log(history[i].Close/history[i-1].Close))
+	}
+	volatility := standardDeviation(returns)
+	if volatility <= 0 || !finite(volatility) {
+		return Rank{}, false
+	}
+	return Rank{Symbol: symbol, Score: protocolv2.RoundMetric(-volatility), Return: protocolv2.RoundMetric(ret), Volatility: protocolv2.RoundMetric(volatility), EntryEligible: true}, true
+}
+
 func slowMomentumReturn(symbol protocolv2.Symbol, history []DailyBar, lookback int) (Rank, bool) {
 	if len(history) < lookback+1 {
 		return Rank{}, false

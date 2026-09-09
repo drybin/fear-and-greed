@@ -77,6 +77,27 @@ func PrepareDefensiveSlowMomentum(sourcePath, outputPath, revision string, diagn
 	return m, nil
 }
 
+// PrepareLowVolatilityTrend writes an immutable manifest for the independent
+// low-volatility quality-trend hypothesis.
+func PrepareLowVolatilityTrend(sourcePath, outputPath, revision string, diagnostic bool, config LowVolatilityTrendConfig, requestedRange *protocolv2.TimeRange) (Manifest, error) {
+	raw, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("portfolio: read source manifest: %w", err)
+	}
+	source, err := manifest.Decode(raw)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m, err := DefaultLowVolatilityTrendManifest(source, revision, diagnostic, config, requestedRange)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if err := writeImmutableJSON(outputPath, m); err != nil {
+		return Manifest{}, err
+	}
+	return m, nil
+}
+
 func Run(ctx context.Context, m Manifest, candleDir, outputPath string) (Report, error) {
 	if err := m.Validate(); err != nil {
 		return Report{}, err
@@ -156,6 +177,9 @@ func portfolioWarmupDays(m Manifest) int {
 	case StrategyKindDefensiveSlowMomentum:
 		c := m.DefensiveSlowMomentum
 		return maxInt(c.SlowMomentum.LookbackDays+1, c.BTCEMADays+1)
+	case StrategyKindLowVolatilityTrend:
+		c := m.LowVolatilityTrend
+		return maxInt(c.TrendEMADays, c.ReturnLookbackDays+1, c.VolatilityDays+1)
 	default:
 		return maxInt(m.RelativeStrength.ReturnLookbackDays+1, m.RelativeStrength.VolatilityDays+1, m.RelativeStrength.ATRDays+1, m.RelativeStrength.BTCEMADays+1)
 	}
@@ -167,6 +191,8 @@ func portfolioRebalances(bars map[protocolv2.Symbol][]DailyBar, m Manifest) ([]R
 		return SlowMomentumRebalances(bars, *m.SlowMomentum, m.Range.Start, m.Range.End)
 	case StrategyKindDefensiveSlowMomentum:
 		return DefensiveSlowMomentumRebalances(bars, *m.DefensiveSlowMomentum, m.Range.Start, m.Range.End)
+	case StrategyKindLowVolatilityTrend:
+		return LowVolatilityTrendRebalances(bars, *m.LowVolatilityTrend, m.Range.Start, m.Range.End)
 	default:
 		return RelativeStrengthRebalances(bars, m.RelativeStrength, m.Range.Start, m.Range.End)
 	}
@@ -178,6 +204,8 @@ func portfolioIdentity(m Manifest) (protocolv2.StrategyRef, string) {
 		return protocolv2.StrategyRef{Code: SlowMomentumCode, Version: StrategyVersion}, slowMomentumCandidate(*m.SlowMomentum)
 	case StrategyKindDefensiveSlowMomentum:
 		return protocolv2.StrategyRef{Code: DefensiveSlowMomentumCode, Version: StrategyVersion}, defensiveSlowMomentumCandidate(*m.DefensiveSlowMomentum)
+	case StrategyKindLowVolatilityTrend:
+		return protocolv2.StrategyRef{Code: LowVolatilityTrendCode, Version: StrategyVersion}, lowVolatilityTrendCandidate(*m.LowVolatilityTrend)
 	default:
 		return relativeStrengthStrategy(m.RelativeStrength.EntryMode), relativeStrengthCandidate(m.RelativeStrength.RegimeMode, m.RelativeStrength.EntryMode)
 	}
@@ -193,6 +221,10 @@ func slowMomentumCandidate(config SlowMomentumConfig) string {
 
 func defensiveSlowMomentumCandidate(config DefensiveSlowMomentumConfig) string {
 	return fmt.Sprintf("defensive-slow-momentum-%dd-top%d-btcema%d-breadth%.0f-daily-riskoff", config.SlowMomentum.LookbackDays, config.SlowMomentum.TopK, config.BTCEMADays, config.MinPositiveBreadth*100)
+}
+
+func lowVolatilityTrendCandidate(config LowVolatilityTrendConfig) string {
+	return fmt.Sprintf("low-vol-trend-ema%d-return%dd-vol%dd-top%d", config.TrendEMADays, config.ReturnLookbackDays, config.VolatilityDays, config.TopK)
 }
 
 func relativeStrengthStrategy(entryMode EntryMode) protocolv2.StrategyRef {

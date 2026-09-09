@@ -46,7 +46,7 @@ func preparePortfolioCommand() *cli.Command {
 			&cli.StringFlag{Name: "manifest", Required: true, Usage: "portfolio manifest output path"},
 			&cli.StringFlag{Name: "workdir", Value: ".", Usage: "clean repository root"},
 			&cli.BoolFlag{Name: "diagnostic", Value: true, Usage: "allow a portfolio-native experiment without research-pass signal artifacts"},
-			&cli.StringFlag{Name: "strategy", Value: string(portfolio.StrategyKindRelativeStrength), Usage: "portfolio strategy: relative-strength, slow-cross-sectional-momentum-v1, or defensive-slow-momentum-v1"},
+			&cli.StringFlag{Name: "strategy", Value: string(portfolio.StrategyKindRelativeStrength), Usage: "portfolio strategy: relative-strength, slow-cross-sectional-momentum-v1, defensive-slow-momentum-v1, or low-volatility-trend-v1"},
 			&cli.StringFlag{Name: "regime-mode", Value: string(portfolio.RegimeModeBoth), Usage: "relative-strength regime: both, btc-ema, breadth, or none"},
 			&cli.StringFlag{Name: "entry-mode", Value: string(portfolio.EntryModeWeeklyOpen), Usage: "relative-strength entry: weekly-open or trend-pullback"},
 			&cli.IntFlag{Name: "momentum-lookback", Value: 60, Usage: "slow momentum lookback: 60 or 90 days"},
@@ -74,6 +74,8 @@ func preparePortfolioCommand() *cli.Command {
 				m, err = portfolio.PrepareSlowMomentum(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"), portfolio.SlowMomentumConfig{LookbackDays: c.Int("momentum-lookback"), TopK: c.Int("momentum-top-k"), RebalanceWeekday: time.Monday}, evaluationRange)
 			case portfolio.StrategyKindDefensiveSlowMomentum:
 				m, err = portfolio.PrepareDefensiveSlowMomentum(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"), portfolio.DefensiveSlowMomentumConfig{SlowMomentum: portfolio.SlowMomentumConfig{LookbackDays: c.Int("momentum-lookback"), TopK: c.Int("momentum-top-k"), RebalanceWeekday: time.Monday}, BTCEMADays: 200, MinPositiveBreadth: .5}, evaluationRange)
+			case portfolio.StrategyKindLowVolatilityTrend:
+				m, err = portfolio.PrepareLowVolatilityTrend(c.String("research-manifest"), c.String("manifest"), source.GitRevision, c.Bool("diagnostic"), portfolio.LowVolatilityTrendConfig{TrendEMADays: 200, ReturnLookbackDays: 20, VolatilityDays: 30, TopK: c.Int("momentum-top-k"), RebalanceWeekday: time.Monday}, evaluationRange)
 			default:
 				return fmt.Errorf("unsupported portfolio strategy %q", c.String("strategy"))
 			}

@@ -179,6 +179,28 @@ RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0
 make build-cli
 ```
 
+## Portfolio: low-volatility trend
+
+`low-volatility-trend-v1` проверяет другую идею: он не выбирает лидеров по
+доходности. По понедельникам он оставляет только монеты, которые по закрытым
+дневным данным находятся выше собственной EMA-200 и имеют положительную
+20-дневную доходность. Затем берёт наиболее спокойные из них по 30-дневной
+реализованной волатильности и полностью перебалансирует корзину равными
+весами. Есть два фиксированных кандидата: `top-5` и `top-10`.
+
+Скрипт запускает оба кандидата на пяти pre-holdout окнах, не скачивает свечи
+и не открывает locked holdout:
+
+```bash
+make build-cli
+
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  bash ./scripts/run_portfolio_low_volatility_trend_walk_forward.sh
+```
+
+Нужен чистый закоммиченный worktree. Сводка будет записана в
+`data/research-v2/portfolio-runs/low-volatility-trend-walk-forward-<git-sha>/summary.json`.
+
 Незавершённые run-директории старых revisions можно сначала посмотреть, а
 затем явно удалить:
 

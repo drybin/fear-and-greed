@@ -234,6 +234,25 @@ fear8.php, fear8_hour.php        # legacy-сбор данных
 | `make lint` | golangci-lint |
 | `make build` | сборка в Docker (`golang:1.22`) |
 
+## Defensive Slow Momentum
+
+`defensive-slow-momentum-v1` проверяет четыре фиксированные комбинации
+кросс-секционного momentum (`60/90` дней × `top-5/top-10`) в пяти
+pre-holdout окнах. Входы происходят по понедельникам с равными весами; на
+следующем дневном открытии портфель полностью выходит в USDT, если закрытый
+бар BTC ниже EMA-200 либо положительную доходность имеет менее 50% валидных
+символов. Скрипт не скачивает и не перезаписывает свечи.
+
+```bash
+make build-cli
+
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  bash ./scripts/run_portfolio_defensive_slow_momentum_walk_forward.sh
+```
+
+Результаты появятся в `data/research-v2/portfolio-runs/defensive-slow-momentum-walk-forward-<revision>/summary.json`.
+Это диагностический development-прогон: locked holdout не открывается.
+
 ## CI
 
 GitHub Actions (`.github/workflows/go.yml`): `go build` и `go test` на push/PR в `main`.

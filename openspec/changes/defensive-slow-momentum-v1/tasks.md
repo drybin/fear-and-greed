@@ -13,5 +13,5 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Run all twenty pre-holdout reports on the VPS
-- [ ] 3.2 Review the summary before any further change or holdout decision
+- [x] 3.1 Run all twenty pre-holdout reports on the VPS
+- [x] 3.2 Review the summary and reject the hypothesis without holdout access
