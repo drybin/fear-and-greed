@@ -98,6 +98,27 @@ func PrepareLowVolatilityTrend(sourcePath, outputPath, revision string, diagnost
 	return m, nil
 }
 
+// PrepareShortTermReversal writes an immutable manifest for the separate
+// weekly contrarian portfolio hypothesis.
+func PrepareShortTermReversal(sourcePath, outputPath, revision string, diagnostic bool, config ShortTermReversalConfig, requestedRange *protocolv2.TimeRange) (Manifest, error) {
+	raw, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("portfolio: read source manifest: %w", err)
+	}
+	source, err := manifest.Decode(raw)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m, err := DefaultShortTermReversalManifest(source, revision, diagnostic, config, requestedRange)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if err := writeImmutableJSON(outputPath, m); err != nil {
+		return Manifest{}, err
+	}
+	return m, nil
+}
+
 func Run(ctx context.Context, m Manifest, candleDir, outputPath string) (Report, error) {
 	if err := m.Validate(); err != nil {
 		return Report{}, err
@@ -180,6 +201,9 @@ func portfolioWarmupDays(m Manifest) int {
 	case StrategyKindLowVolatilityTrend:
 		c := m.LowVolatilityTrend
 		return maxInt(c.TrendEMADays, c.ReturnLookbackDays+1, c.VolatilityDays+1)
+	case StrategyKindShortTermReversal:
+		c := m.ShortTermReversal
+		return maxInt(c.TrendEMADays, c.ReturnLookbackDays+1)
 	default:
 		return maxInt(m.RelativeStrength.ReturnLookbackDays+1, m.RelativeStrength.VolatilityDays+1, m.RelativeStrength.ATRDays+1, m.RelativeStrength.BTCEMADays+1)
 	}
@@ -193,6 +217,8 @@ func portfolioRebalances(bars map[protocolv2.Symbol][]DailyBar, m Manifest) ([]R
 		return DefensiveSlowMomentumRebalances(bars, *m.DefensiveSlowMomentum, m.Range.Start, m.Range.End)
 	case StrategyKindLowVolatilityTrend:
 		return LowVolatilityTrendRebalances(bars, *m.LowVolatilityTrend, m.Range.Start, m.Range.End)
+	case StrategyKindShortTermReversal:
+		return ShortTermReversalRebalances(bars, *m.ShortTermReversal, m.Range.Start, m.Range.End)
 	default:
 		return RelativeStrengthRebalances(bars, m.RelativeStrength, m.Range.Start, m.Range.End)
 	}
@@ -206,6 +232,8 @@ func portfolioIdentity(m Manifest) (protocolv2.StrategyRef, string) {
 		return protocolv2.StrategyRef{Code: DefensiveSlowMomentumCode, Version: StrategyVersion}, defensiveSlowMomentumCandidate(*m.DefensiveSlowMomentum)
 	case StrategyKindLowVolatilityTrend:
 		return protocolv2.StrategyRef{Code: LowVolatilityTrendCode, Version: StrategyVersion}, lowVolatilityTrendCandidate(*m.LowVolatilityTrend)
+	case StrategyKindShortTermReversal:
+		return protocolv2.StrategyRef{Code: ShortTermReversalCode, Version: StrategyVersion}, shortTermReversalCandidate(*m.ShortTermReversal)
 	default:
 		return relativeStrengthStrategy(m.RelativeStrength.EntryMode), relativeStrengthCandidate(m.RelativeStrength.RegimeMode, m.RelativeStrength.EntryMode)
 	}
@@ -225,6 +253,10 @@ func defensiveSlowMomentumCandidate(config DefensiveSlowMomentumConfig) string {
 
 func lowVolatilityTrendCandidate(config LowVolatilityTrendConfig) string {
 	return fmt.Sprintf("low-vol-trend-ema%d-return%dd-vol%dd-top%d", config.TrendEMADays, config.ReturnLookbackDays, config.VolatilityDays, config.TopK)
+}
+
+func shortTermReversalCandidate(config ShortTermReversalConfig) string {
+	return fmt.Sprintf("short-term-reversal-ema%d-return%dd-top%d", config.TrendEMADays, config.ReturnLookbackDays, config.TopK)
 }
 
 func relativeStrengthStrategy(entryMode EntryMode) protocolv2.StrategyRef {

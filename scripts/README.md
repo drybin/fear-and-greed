@@ -201,6 +201,26 @@ RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0
 Нужен чистый закоммиченный worktree. Сводка будет записана в
 `data/research-v2/portfolio-runs/low-volatility-trend-walk-forward-<git-sha>/summary.json`.
 
+## Portfolio: short-term reversal
+
+`short-term-reversal-v1` проверяет недельный контртрендовый отскок внутри
+долгосрочного тренда. По понедельникам он берёт только монеты выше собственной
+EMA-200, у которых завершённая 5-дневная доходность отрицательна, ранжирует их
+от худшей к лучшей и покупает `top-5` или `top-10` равными весами. Корзина
+полностью пересобирается через неделю; при отсутствии подходящих монет капитал
+остаётся в USDT.
+
+```bash
+make build-cli
+
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  bash ./scripts/run_portfolio_short_term_reversal_walk_forward.sh
+```
+
+Скрипт создаёт десять pre-holdout отчётов и
+`data/research-v2/portfolio-runs/short-term-reversal-walk-forward-<git-sha>/summary.json`.
+Нужен чистый закоммиченный worktree; locked holdout не открывается.
+
 Незавершённые run-директории старых revisions можно сначала посмотреть, а
 затем явно удалить:
 

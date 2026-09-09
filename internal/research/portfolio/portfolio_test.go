@@ -216,6 +216,56 @@ func TestLowVolatilityTrendStaysInCashWithoutEligibleSymbols(t *testing.T) {
 	require.Empty(t, events[0].Retain)
 }
 
+func TestShortTermReversalUsesOnlyCompletedPreRebalanceBars(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 240, 100, .003),
+		"AAAUSDT": syntheticBars(start, 240, 100, .006),
+		"BBBUSDT": syntheticBars(start, 240, 100, .005),
+		"CCCUSDT": syntheticBars(start, 240, 100, .004),
+		"DDDUSDT": syntheticBars(start, 240, 100, .003),
+		"EEEUSDT": syntheticBars(start, 240, 100, .002),
+	}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	index := int(fill.Sub(start) / (24 * time.Hour))
+	for symbol, series := range bars {
+		if symbol == "BTCUSDT" {
+			continue
+		}
+		series[index-1].Close *= .90
+		series[index-1].Low = series[index-1].Close * .99
+	}
+	cfg := ShortTermReversalConfig{TrendEMADays: 200, ReturnLookbackDays: 5, TopK: 5, RebalanceWeekday: time.Monday}
+	before, err := ShortTermReversalRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	require.NotEmpty(t, before[0].Targets)
+
+	changed := cloneDailyBars(bars)
+	changed["AAAUSDT"][index].Close *= .50
+	changed["AAAUSDT"][index].Low = changed["AAAUSDT"][index].Close * .99
+	after, err := ShortTermReversalRebalances(changed, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, before, after, "the fill-day candle must not affect its own reversal rank")
+}
+
+func TestShortTermReversalStaysInCashWithoutFiveDayLosers(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{
+		"BTCUSDT": syntheticBars(start, 240, 100, .003),
+		"AAAUSDT": syntheticBars(start, 240, 100, .006),
+		"BBBUSDT": syntheticBars(start, 240, 100, .005),
+	}
+	cfg := ShortTermReversalConfig{TrendEMADays: 200, ReturnLookbackDays: 5, TopK: 5, RebalanceWeekday: time.Monday}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	events, err := ShortTermReversalRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.True(t, events[0].RegimeOn)
+	require.Empty(t, events[0].Targets)
+	require.Empty(t, events[0].Retain)
+}
+
 func TestEngineSupportsEqualWeightRebalanceWithoutStop(t *testing.T) {
 	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
 	bars := map[protocolv2.Symbol][]DailyBar{}

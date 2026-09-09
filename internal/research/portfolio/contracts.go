@@ -24,6 +24,7 @@ const (
 	SlowMomentumCode          = "slow-cross-sectional-momentum-v1"
 	DefensiveSlowMomentumCode = "defensive-slow-momentum-v1"
 	LowVolatilityTrendCode    = "low-volatility-trend-v1"
+	ShortTermReversalCode     = "short-term-reversal-v1"
 )
 
 // StrategyKind distinguishes portfolio hypotheses without changing legacy
@@ -36,11 +37,12 @@ const (
 	StrategyKindSlowMomentum          StrategyKind = "slow-cross-sectional-momentum-v1"
 	StrategyKindDefensiveSlowMomentum StrategyKind = "defensive-slow-momentum-v1"
 	StrategyKindLowVolatilityTrend    StrategyKind = "low-volatility-trend-v1"
+	StrategyKindShortTermReversal     StrategyKind = "short-term-reversal-v1"
 )
 
 func (k StrategyKind) Validate() error {
 	switch k {
-	case "", StrategyKindRelativeStrength, StrategyKindSlowMomentum, StrategyKindDefensiveSlowMomentum, StrategyKindLowVolatilityTrend:
+	case "", StrategyKindRelativeStrength, StrategyKindSlowMomentum, StrategyKindDefensiveSlowMomentum, StrategyKindLowVolatilityTrend, StrategyKindShortTermReversal:
 		return nil
 	default:
 		return fmt.Errorf("portfolio: invalid strategy kind %q", k)
@@ -180,6 +182,23 @@ type LowVolatilityTrendConfig struct {
 	RebalanceWeekday   time.Weekday `json:"rebalance_weekday"`
 }
 
+// ShortTermReversalConfig defines a weekly cross-sectional contrarian test.
+// The fixed long trend filter prevents this from becoming a broad downtrend
+// dip-buying strategy.
+type ShortTermReversalConfig struct {
+	TrendEMADays       int          `json:"trend_ema_days"`
+	ReturnLookbackDays int          `json:"return_lookback_days"`
+	TopK               int          `json:"top_k"`
+	RebalanceWeekday   time.Weekday `json:"rebalance_weekday"`
+}
+
+func (c ShortTermReversalConfig) Validate() error {
+	if c.TrendEMADays != 200 || c.ReturnLookbackDays != 5 || (c.TopK != 5 && c.TopK != 10) || c.RebalanceWeekday != time.Monday {
+		return fmt.Errorf("portfolio: invalid short term reversal config")
+	}
+	return nil
+}
+
 func (c LowVolatilityTrendConfig) Validate() error {
 	if c.TrendEMADays != 200 || c.ReturnLookbackDays != 20 || c.VolatilityDays != 30 ||
 		(c.TopK != 5 && c.TopK != 10) || c.RebalanceWeekday != time.Monday {
@@ -226,6 +245,7 @@ type Manifest struct {
 	SlowMomentum           *SlowMomentumConfig          `json:"slow_momentum,omitempty"`
 	DefensiveSlowMomentum  *DefensiveSlowMomentumConfig `json:"defensive_slow_momentum,omitempty"`
 	LowVolatilityTrend     *LowVolatilityTrendConfig    `json:"low_volatility_trend,omitempty"`
+	ShortTermReversal      *ShortTermReversalConfig     `json:"short_term_reversal,omitempty"`
 	Gates                  Gates                        `json:"gates"`
 }
 
@@ -307,6 +327,26 @@ func DefaultLowVolatilityTrendManifest(source manifest.Manifest, revision string
 	m.ID, m.Hash = "", ""
 	m.StrategyKind = StrategyKindLowVolatilityTrend
 	m.LowVolatilityTrend = &config
+	m.Limits.MaxPositions = config.TopK
+	if err := m.freeze(); err != nil {
+		return Manifest{}, err
+	}
+	return m, nil
+}
+
+// DefaultShortTermReversalManifest freezes the contrarian hypothesis under a
+// new identity, leaving every prior portfolio artifact untouched.
+func DefaultShortTermReversalManifest(source manifest.Manifest, revision string, diagnostic bool, config ShortTermReversalConfig, requestedRange *protocolv2.TimeRange) (Manifest, error) {
+	if err := config.Validate(); err != nil {
+		return Manifest{}, err
+	}
+	m, err := DefaultManifest(source, revision, diagnostic, RegimeModeNone, EntryModeWeeklyOpen, requestedRange)
+	if err != nil {
+		return Manifest{}, err
+	}
+	m.ID, m.Hash = "", ""
+	m.StrategyKind = StrategyKindShortTermReversal
+	m.ShortTermReversal = &config
 	m.Limits.MaxPositions = config.TopK
 	if err := m.freeze(); err != nil {
 		return Manifest{}, err
@@ -417,25 +457,32 @@ func (m Manifest) Validate() error {
 		if m.SlowMomentum == nil || m.SlowMomentum.Validate() != nil || m.Limits.MaxPositions != m.SlowMomentum.TopK {
 			return fmt.Errorf("portfolio: invalid slow momentum manifest")
 		}
-		if m.DefensiveSlowMomentum != nil || m.LowVolatilityTrend != nil {
+		if m.DefensiveSlowMomentum != nil || m.LowVolatilityTrend != nil || m.ShortTermReversal != nil {
 			return fmt.Errorf("portfolio: slow momentum manifest must not include defensive config")
 		}
 	case StrategyKindDefensiveSlowMomentum:
 		if m.DefensiveSlowMomentum == nil || m.DefensiveSlowMomentum.Validate() != nil || m.Limits.MaxPositions != m.DefensiveSlowMomentum.SlowMomentum.TopK {
 			return fmt.Errorf("portfolio: invalid defensive slow momentum manifest")
 		}
-		if m.SlowMomentum != nil || m.LowVolatilityTrend != nil {
+		if m.SlowMomentum != nil || m.LowVolatilityTrend != nil || m.ShortTermReversal != nil {
 			return fmt.Errorf("portfolio: defensive slow momentum manifest must not include plain slow momentum config")
 		}
 	case StrategyKindLowVolatilityTrend:
 		if m.LowVolatilityTrend == nil || m.LowVolatilityTrend.Validate() != nil || m.Limits.MaxPositions != m.LowVolatilityTrend.TopK {
 			return fmt.Errorf("portfolio: invalid low volatility trend manifest")
 		}
-		if m.SlowMomentum != nil || m.DefensiveSlowMomentum != nil {
+		if m.SlowMomentum != nil || m.DefensiveSlowMomentum != nil || m.ShortTermReversal != nil {
 			return fmt.Errorf("portfolio: low volatility trend manifest must not include momentum config")
 		}
-	default:
+	case StrategyKindShortTermReversal:
+		if m.ShortTermReversal == nil || m.ShortTermReversal.Validate() != nil || m.Limits.MaxPositions != m.ShortTermReversal.TopK {
+			return fmt.Errorf("portfolio: invalid short term reversal manifest")
+		}
 		if m.SlowMomentum != nil || m.DefensiveSlowMomentum != nil || m.LowVolatilityTrend != nil {
+			return fmt.Errorf("portfolio: short term reversal manifest must not include another strategy config")
+		}
+	default:
+		if m.SlowMomentum != nil || m.DefensiveSlowMomentum != nil || m.LowVolatilityTrend != nil || m.ShortTermReversal != nil {
 			return fmt.Errorf("portfolio: relative-strength manifest must not include slow momentum config")
 		}
 		r := m.RelativeStrength
