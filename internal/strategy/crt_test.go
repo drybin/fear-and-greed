@@ -12,12 +12,16 @@ func TestAggregateMinutes_4H(t *testing.T) {
 	var candles []model.Candle
 	for i := 0; i < 240; i++ {
 		candles = append(candles, model.Candle{
-			OpenTime: start.Add(time.Duration(i) * time.Minute),
-			Open:     100,
-			High:     101,
-			Low:      99,
-			Close:    100,
-			Volume:   10,
+			OpenTime:            start.Add(time.Duration(i) * time.Minute),
+			Open:                100,
+			High:                101,
+			Low:                 99,
+			Close:               100,
+			Volume:              10,
+			QuoteVolume:         1000,
+			Trades:              5,
+			TakerBuyBaseVolume:  4,
+			TakerBuyQuoteVolume: 400,
 		})
 	}
 	out := AggregateMinutes(candles, 240)
@@ -26,6 +30,9 @@ func TestAggregateMinutes_4H(t *testing.T) {
 	}
 	if out[0].Volume != 2400 {
 		t.Fatalf("expected summed volume 2400, got %f", out[0].Volume)
+	}
+	if out[0].QuoteVolume != 240000 || out[0].Trades != 1200 || out[0].TakerBuyQuoteVolume != 96000 {
+		t.Fatalf("expected summed spot-flow fields, got quote=%f trades=%d taker_quote=%f", out[0].QuoteVolume, out[0].Trades, out[0].TakerBuyQuoteVolume)
 	}
 }
 

@@ -66,6 +66,10 @@ var volumeBreakoutV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
 	"volume-breakout-long-v1": {},
 }
 
+var spotFlowPullbackV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
+	"spot-flow-pullback-long-v1": {},
+}
+
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation
 // scope after normal manifest validation. It rejects strategies reserved for
 // follow-up research changes without restricting non-core manifest consumers.
@@ -115,6 +119,10 @@ func ValidateVolumeBreakoutV1StrategyCodes(strategies []Strategy) error {
 	return validateStrategySuite("volume-breakout-v1", strategies, volumeBreakoutV1StrategyCodes)
 }
 
+func ValidateSpotFlowPullbackV1StrategyCodes(strategies []Strategy) error {
+	return validateStrategySuite("spot-flow-pullback-v1", strategies, spotFlowPullbackV1StrategyCodes)
+}
+
 // ValidateSupportedStrategyCodes accepts one complete protocol suite, never a
 // mixture of historical core and new research candidates.
 func ValidateSupportedStrategyCodes(strategies []Strategy) error {
@@ -148,7 +156,10 @@ func ValidateSupportedStrategyCodes(strategies []Strategy) error {
 	if err := ValidateEMAPullbackV1StrategyCodes(strategies); err == nil {
 		return nil
 	}
-	return ValidateVolumeBreakoutV1StrategyCodes(strategies)
+	if err := ValidateVolumeBreakoutV1StrategyCodes(strategies); err == nil {
+		return nil
+	}
+	return ValidateSpotFlowPullbackV1StrategyCodes(strategies)
 }
 
 func validateStrategySuite(name string, strategies []Strategy, allowed map[protocolv2.StrategyCode]struct{}) error {

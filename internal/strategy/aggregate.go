@@ -7,7 +7,7 @@ import (
 )
 
 // AggregateMinutes builds higher-TF candles from minute (or uniform step) series.
-// Bucket open time is UTC-aligned; volume is summed.
+// Bucket open time is UTC-aligned; volume and spot-flow fields are summed.
 func AggregateMinutes(candles []model.Candle, minutes int) []model.Candle {
 	if len(candles) == 0 || minutes < 1 {
 		return nil
@@ -29,12 +29,14 @@ func AggregateMinutes(candles []model.Candle, minutes int) []model.Candle {
 			flush()
 			curBucket = b
 			cur = &model.Candle{
-				OpenTime: b,
-				Open:     c.Open,
-				High:     c.High,
-				Low:      c.Low,
-				Close:    c.Close,
-				Volume:   c.Volume,
+				OpenTime:    b,
+				Open:        c.Open,
+				High:        c.High,
+				Low:         c.Low,
+				Close:       c.Close,
+				Volume:      c.Volume,
+				QuoteVolume: c.QuoteVolume, Trades: c.Trades,
+				TakerBuyBaseVolume: c.TakerBuyBaseVolume, TakerBuyQuoteVolume: c.TakerBuyQuoteVolume,
 			}
 			continue
 		}
@@ -46,6 +48,10 @@ func AggregateMinutes(candles []model.Candle, minutes int) []model.Candle {
 		}
 		cur.Close = c.Close
 		cur.Volume += c.Volume
+		cur.QuoteVolume += c.QuoteVolume
+		cur.Trades += c.Trades
+		cur.TakerBuyBaseVolume += c.TakerBuyBaseVolume
+		cur.TakerBuyQuoteVolume += c.TakerBuyQuoteVolume
 	}
 	flush()
 	return out

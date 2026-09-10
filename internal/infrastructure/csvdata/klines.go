@@ -105,13 +105,40 @@ func loadKlines(path string, start, end time.Time) ([]model.Candle, error) {
 				return nil, wrap.Errorf("row %d volume: %w", row, err)
 			}
 		}
+		quoteVolume, trades, takerBuyBaseVolume, takerBuyQuoteVolume := 0.0, int64(0), 0.0, 0.0
+		if len(rec) > 6 {
+			quoteVolume, err = strconv.ParseFloat(rec[6], 64)
+			if err != nil {
+				return nil, wrap.Errorf("row %d quote volume: %w", row, err)
+			}
+		}
+		if len(rec) > 7 {
+			trades, err = strconv.ParseInt(rec[7], 10, 64)
+			if err != nil {
+				return nil, wrap.Errorf("row %d trades: %w", row, err)
+			}
+		}
+		if len(rec) > 8 {
+			takerBuyBaseVolume, err = strconv.ParseFloat(rec[8], 64)
+			if err != nil {
+				return nil, wrap.Errorf("row %d taker buy base volume: %w", row, err)
+			}
+		}
+		if len(rec) > 9 {
+			takerBuyQuoteVolume, err = strconv.ParseFloat(rec[9], 64)
+			if err != nil {
+				return nil, wrap.Errorf("row %d taker buy quote volume: %w", row, err)
+			}
+		}
 		out = append(out, model.Candle{
-			OpenTime: ts,
-			Open:     open,
-			High:     high,
-			Low:      low,
-			Close:    closePrice,
-			Volume:   vol,
+			OpenTime:    ts,
+			Open:        open,
+			High:        high,
+			Low:         low,
+			Close:       closePrice,
+			Volume:      vol,
+			QuoteVolume: quoteVolume, Trades: trades,
+			TakerBuyBaseVolume: takerBuyBaseVolume, TakerBuyQuoteVolume: takerBuyQuoteVolume,
 		})
 	}
 	return out, nil

@@ -27,6 +27,7 @@ const (
 	CapitulationReversalLongCode        protocolv2.StrategyCode = "capitulation-reversal-long-v1"
 	EMAPullbackLongCode                 protocolv2.StrategyCode = "ema-pullback-long-v1"
 	VolumeBreakoutLongCode              protocolv2.StrategyCode = "volume-breakout-long-v1"
+	SpotFlowPullbackLongCode            protocolv2.StrategyCode = "spot-flow-pullback-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -169,6 +170,10 @@ func EMAPullbackV1() []Adapter { return []Adapter{emaPullbackV1()} }
 // channel-only and compression-breakout research suites.
 func VolumeBreakoutV1() []Adapter { return []Adapter{volumeBreakoutV1()} }
 
+// SpotFlowPullbackV1 tests a single pre-specified use of Binance spot order-flow
+// fields, isolated from the price-only strategy suites.
+func SpotFlowPullbackV1() []Adapter { return []Adapter{spotFlowPullbackV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -222,7 +227,22 @@ func All() []Adapter {
 	all = append(all, BollingerRangeReversionV1()...)
 	all = append(all, CapitulationReversalV1()...)
 	all = append(all, EMAPullbackV1()...)
-	return append(all, VolumeBreakoutV1()...)
+	all = append(all, VolumeBreakoutV1()...)
+	return append(all, SpotFlowPullbackV1()...)
+}
+
+func spotFlowPullbackV1() Adapter {
+	grid := []ParameterCandidate{{ID: "flow55-pullback3", Values: map[string]any{"min_taker_buy_share": 0.55, "pullback_hours": 3, "quote_volume_sma_hours": 20}}}
+	return adapter{
+		metadata: execution.StrategyMetadata{Ref: ref(SpotFlowPullbackLongCode, "v1.0.0"), Name: "Spot Flow Pullback v1", Timeframe: "1h", WarmupBars: 880, Description: "A green 1h recovery after a three-hour pullback in a causal rising 4h EMA200 trend, requiring at least 55% taker-buy quote flow and above-prior-20h quote volume; 1R/2R exits or 48-hour timeout."},
+		grid:     grid,
+		evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+			if id != "flow55-pullback3" {
+				return nil, fmt.Errorf("unknown spot flow pullback candidate %q", id)
+			}
+			return strategy.SpotFlowPullbackV1Signals(candles)
+		},
+	}
 }
 
 func volumeBreakoutV1() Adapter {
