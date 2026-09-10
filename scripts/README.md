@@ -221,6 +221,25 @@ RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0
 `data/research-v2/portfolio-runs/short-term-reversal-walk-forward-<git-sha>/summary.json`.
 Нужен чистый закоммиченный worktree; locked holdout не открывается.
 
+## Portfolio: BTC regime equal weight
+
+`btc-regime-equal-weight-v1` — контрольная portfolio-гипотеза без выбора
+отдельных монет. В первый понедельник месяца она держит все 50 замороженных
+spot-символов равными долями по 2%, только когда рассчитанная по закрытым
+дневным свечам BTC EMA-50 выше EMA-200. В противном случае весь капитал
+остаётся в USDT.
+
+```bash
+make build-cli
+
+RESEARCH_MANIFEST=/home/drybin/fear-and-greed/data/research-v2/runs/2026-08-01-0de0bb138075/manifest.json \
+  bash ./scripts/run_portfolio_btc_regime_equal_weight_walk_forward.sh
+```
+
+Скрипт создаёт пять pre-holdout отчётов и
+`data/research-v2/portfolio-runs/btc-regime-equal-weight-walk-forward-<git-sha>/summary.json`.
+Нужен чистый закоммиченный worktree; locked holdout не открывается.
+
 Незавершённые run-директории старых revisions можно сначала посмотреть, а
 затем явно удалить:
 

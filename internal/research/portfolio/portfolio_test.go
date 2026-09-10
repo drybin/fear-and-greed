@@ -266,6 +266,66 @@ func TestShortTermReversalStaysInCashWithoutFiveDayLosers(t *testing.T) {
 	require.Empty(t, events[0].Retain)
 }
 
+func TestBTCRegimeEqualWeightUsesOnlyCompletedPreRebalanceBars(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := fiftySyntheticBars(start, .003)
+	cfg := BTCRegimeEqualWeightConfig{FastEMADays: 50, SlowEMADays: 200, UniverseSize: 50}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	before, err := BTCRegimeEqualWeightRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	require.True(t, before[0].RegimeOn)
+	require.Len(t, before[0].Targets, 50)
+	require.Equal(t, 2.0, before[0].Targets[0].TargetWeightPercent)
+
+	changed := cloneDailyBars(bars)
+	index := int(fill.Sub(start) / (24 * time.Hour))
+	changed["BTCUSDT"][index].Close = 1
+	after, err := BTCRegimeEqualWeightRebalances(changed, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, before, after, "the fill-day BTC close must not affect its own regime decision")
+}
+
+func TestBTCRegimeEqualWeightStaysInCashWhenFastEMAIsBelowSlowEMA(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	bars := fiftySyntheticBars(start, -.003)
+	cfg := BTCRegimeEqualWeightConfig{FastEMADays: 50, SlowEMADays: 200, UniverseSize: 50}
+	fill := firstWeekdayAfter(start.Add(210*24*time.Hour), time.Monday)
+	events, err := BTCRegimeEqualWeightRebalances(bars, cfg, fill, fill.Add(24*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.False(t, events[0].RegimeOn)
+	require.Empty(t, events[0].Targets)
+}
+
+func TestEngineSupportsFiftyEqualWeightPositions(t *testing.T) {
+	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
+	bars := map[protocolv2.Symbol][]DailyBar{}
+	targets := make([]Rank, 0, 50)
+	for index := 0; index < 50; index++ {
+		symbol := protocolv2.Symbol(fmt.Sprintf("ASSET%02dUSDT", index))
+		bars[symbol] = []DailyBar{{Time: day, Open: 100, High: 101, Low: 99, Close: 100}, {Time: day.Add(24 * time.Hour), Open: 100, High: 101, Low: 99, Close: 100}}
+		targets = append(targets, Rank{Symbol: symbol, Rank: index + 1, TargetWeightPercent: 2})
+	}
+	limits := Limits{InitialCapital: 10_000, RiskPerTradePercent: 1, MaxPositionPercent: 2, MaxPositions: 50, MaxAggregateRiskPct: 5}
+	result, err := (Engine{Limits: limits}).Run(bars, []Rebalance{{FillTime: day, RegimeOn: true, ReplaceAll: true, Targets: targets, Retain: map[protocolv2.Symbol]bool{}}}, day, day.Add(48*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result.Decisions, 50)
+	require.Len(t, result.Trades, 50)
+	for _, decision := range result.Decisions {
+		require.True(t, decision.Accepted)
+	}
+}
+
+func fiftySyntheticBars(start time.Time, drift float64) map[protocolv2.Symbol][]DailyBar {
+	bars := map[protocolv2.Symbol][]DailyBar{"BTCUSDT": syntheticBars(start, 240, 100, drift)}
+	for index := 1; index < 50; index++ {
+		symbol := protocolv2.Symbol(fmt.Sprintf("ASSET%02dUSDT", index))
+		bars[symbol] = syntheticBars(start, 240, 100+float64(index), drift)
+	}
+	return bars
+}
+
 func TestEngineSupportsEqualWeightRebalanceWithoutStop(t *testing.T) {
 	day := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
 	bars := map[protocolv2.Symbol][]DailyBar{}

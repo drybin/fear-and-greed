@@ -335,6 +335,58 @@ func ShortTermReversalRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg Shor
 	return events, nil
 }
 
+// BTCRegimeEqualWeightRebalances is a monthly market-timing baseline. It
+// holds every available frozen-universe symbol at equal target weight only
+// when the completed BTC EMA-50 is above its completed EMA-200.
+func BTCRegimeEqualWeightRebalances(bars map[protocolv2.Symbol][]DailyBar, cfg BTCRegimeEqualWeightConfig, evaluationStart, evaluationEnd time.Time) ([]Rebalance, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	calendar := bars["BTCUSDT"]
+	if len(calendar) == 0 {
+		return nil, fmt.Errorf("portfolio: BTCUSDT is required for BTC regime equal weight calendar")
+	}
+	symbols := make([]protocolv2.Symbol, 0, len(bars))
+	for symbol := range bars {
+		symbols = append(symbols, symbol)
+	}
+	if len(symbols) != cfg.UniverseSize {
+		return nil, fmt.Errorf("portfolio: BTC regime equal weight requires %d symbols", cfg.UniverseSize)
+	}
+	sort.Slice(symbols, func(i, j int) bool { return symbols[i] < symbols[j] })
+	events := make([]Rebalance, 0)
+	for _, fill := range calendar {
+		if fill.Time.Before(evaluationStart) || !fill.Time.Before(evaluationEnd) || !firstMondayOfMonth(fill.Time) {
+			continue
+		}
+		history := completedBefore(calendar, fill.Time)
+		event := Rebalance{FillTime: fill.Time, ReplaceAll: true, Retain: map[protocolv2.Symbol]bool{}}
+		if len(history) < cfg.SlowEMADays {
+			events = append(events, event)
+			continue
+		}
+		fast := emaClose(history[len(history)-cfg.FastEMADays:], cfg.FastEMADays)
+		slow := emaClose(history[len(history)-cfg.SlowEMADays:], cfg.SlowEMADays)
+		event.BTCAboveEMA = fast > slow
+		event.RegimeOn = event.BTCAboveEMA
+		if event.RegimeOn {
+			weight := 100 / float64(cfg.UniverseSize)
+			for index, symbol := range symbols {
+				rank := Rank{Symbol: symbol, Rank: index + 1, TargetWeightPercent: weight, EntryEligible: true}
+				event.Ranking = append(event.Ranking, rank)
+				event.Targets = append(event.Targets, rank)
+				event.Retain[symbol] = true
+			}
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func firstMondayOfMonth(day time.Time) bool {
+	return day.Weekday() == time.Monday && day.Day() <= 7
+}
+
 func shortTermReversalScore(symbol protocolv2.Symbol, history []DailyBar, cfg ShortTermReversalConfig) (Rank, bool) {
 	need := maxInt(cfg.TrendEMADays, cfg.ReturnLookbackDays+1)
 	if len(history) < need {
