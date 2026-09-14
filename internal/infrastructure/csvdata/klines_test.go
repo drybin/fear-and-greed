@@ -43,6 +43,7 @@ func TestLoadKlinesReadsSpotFlowColumns(t *testing.T) {
 	require.EqualValues(t, 42, candles[0].Trades)
 	require.Equal(t, 6.2, candles[0].TakerBuyBaseVolume)
 	require.Equal(t, 626.1, candles[0].TakerBuyQuoteVolume)
+	require.True(t, candles[0].HasSpotFlow)
 }
 
 func TestLoadKlinesRangeUsesHalfOpenBounds(t *testing.T) {

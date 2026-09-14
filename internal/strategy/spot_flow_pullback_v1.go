@@ -68,7 +68,7 @@ func spotFlowPullbackV1Signals(hours, fourHours []model.Candle) ([]EntrySignal, 
 
 func validateSpotFlow(candles []model.Candle) error {
 	for i, candle := range candles {
-		if !finiteStrategy(candle.QuoteVolume) || !finiteStrategy(candle.TakerBuyQuoteVolume) || candle.QuoteVolume <= 0 || candle.TakerBuyQuoteVolume < 0 || candle.TakerBuyQuoteVolume > candle.QuoteVolume || candle.Trades <= 0 {
+		if !candle.HasSpotFlow || !finiteStrategy(candle.QuoteVolume) || !finiteStrategy(candle.TakerBuyQuoteVolume) || candle.QuoteVolume < 0 || candle.TakerBuyQuoteVolume < 0 || candle.TakerBuyQuoteVolume > candle.QuoteVolume || candle.Trades < 0 {
 			return fmt.Errorf("strategy: spot-flow candle %d at %s is missing or invalid quote/trade flow", i, candle.OpenTime.UTC().Format(time.RFC3339))
 		}
 	}

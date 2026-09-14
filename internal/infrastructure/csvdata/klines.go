@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/drybin/fear-and-greed/internal/domain/model"
@@ -44,12 +45,18 @@ func loadKlines(path string, start, end time.Time) ([]model.Candle, error) {
 	defer func() { _ = f.Close() }()
 
 	r := csv.NewReader(f)
-	if _, err := r.Read(); err != nil {
+	header, err := r.Read()
+	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, wrap.Errorf("csv is empty: %s", path)
 		}
 		return nil, wrap.Errorf("read csv: %w", err)
 	}
+	hasSpotFlow := len(header) >= 10 &&
+		strings.TrimSpace(header[6]) == "quote_volume" &&
+		strings.TrimSpace(header[7]) == "trades" &&
+		strings.TrimSpace(header[8]) == "taker_buy_base_volume" &&
+		strings.TrimSpace(header[9]) == "taker_buy_quote_volume"
 
 	// Read rows incrementally. ReadAll keeps both every CSV field string and
 	// every parsed candle alive at once, which is prohibitive for multi-year
@@ -106,25 +113,22 @@ func loadKlines(path string, start, end time.Time) ([]model.Candle, error) {
 			}
 		}
 		quoteVolume, trades, takerBuyBaseVolume, takerBuyQuoteVolume := 0.0, int64(0), 0.0, 0.0
-		if len(rec) > 6 {
+		if hasSpotFlow {
+			if len(rec) < 10 {
+				return nil, wrap.Errorf("row %d: expected spot-flow columns", row)
+			}
 			quoteVolume, err = strconv.ParseFloat(rec[6], 64)
 			if err != nil {
 				return nil, wrap.Errorf("row %d quote volume: %w", row, err)
 			}
-		}
-		if len(rec) > 7 {
 			trades, err = strconv.ParseInt(rec[7], 10, 64)
 			if err != nil {
 				return nil, wrap.Errorf("row %d trades: %w", row, err)
 			}
-		}
-		if len(rec) > 8 {
 			takerBuyBaseVolume, err = strconv.ParseFloat(rec[8], 64)
 			if err != nil {
 				return nil, wrap.Errorf("row %d taker buy base volume: %w", row, err)
 			}
-		}
-		if len(rec) > 9 {
 			takerBuyQuoteVolume, err = strconv.ParseFloat(rec[9], 64)
 			if err != nil {
 				return nil, wrap.Errorf("row %d taker buy quote volume: %w", row, err)
@@ -139,6 +143,7 @@ func loadKlines(path string, start, end time.Time) ([]model.Candle, error) {
 			Volume:      vol,
 			QuoteVolume: quoteVolume, Trades: trades,
 			TakerBuyBaseVolume: takerBuyBaseVolume, TakerBuyQuoteVolume: takerBuyQuoteVolume,
+			HasSpotFlow: hasSpotFlow,
 		})
 	}
 	return out, nil

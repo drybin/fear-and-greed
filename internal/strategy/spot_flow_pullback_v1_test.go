@@ -39,9 +39,18 @@ func TestSpotFlowPullbackV1Signals_RejectsMissingFlow(t *testing.T) {
 	require.ErrorContains(t, err, "missing or invalid quote/trade flow")
 }
 
+func TestSpotFlowPullbackV1Signals_AllowsZeroActivityMinute(t *testing.T) {
+	_, err := SpotFlowPullbackV1Signals([]model.Candle{{
+		OpenTime: time.Now().UTC(), Open: 1, High: 1, Low: 1, Close: 1,
+		HasSpotFlow: true,
+	}})
+	require.NoError(t, err)
+}
+
 func flowHour(at time.Time, open, high, low, close, quote float64) model.Candle {
 	return model.Candle{
 		OpenTime: at, Open: open, High: high, Low: low, Close: close, Volume: quote / close,
 		QuoteVolume: quote, Trades: 10, TakerBuyBaseVolume: quote * .6 / close, TakerBuyQuoteVolume: quote * .6,
+		HasSpotFlow: true,
 	}
 }

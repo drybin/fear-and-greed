@@ -37,6 +37,7 @@ func AggregateMinutes(candles []model.Candle, minutes int) []model.Candle {
 				Volume:      c.Volume,
 				QuoteVolume: c.QuoteVolume, Trades: c.Trades,
 				TakerBuyBaseVolume: c.TakerBuyBaseVolume, TakerBuyQuoteVolume: c.TakerBuyQuoteVolume,
+				HasSpotFlow: c.HasSpotFlow,
 			}
 			continue
 		}
@@ -52,6 +53,7 @@ func AggregateMinutes(candles []model.Candle, minutes int) []model.Candle {
 		cur.Trades += c.Trades
 		cur.TakerBuyBaseVolume += c.TakerBuyBaseVolume
 		cur.TakerBuyQuoteVolume += c.TakerBuyQuoteVolume
+		cur.HasSpotFlow = cur.HasSpotFlow && c.HasSpotFlow
 	}
 	flush()
 	return out

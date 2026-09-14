@@ -14,4 +14,5 @@ type Candle struct {
 	Trades              int64
 	TakerBuyBaseVolume  float64
 	TakerBuyQuoteVolume float64
+	HasSpotFlow         bool
 }
