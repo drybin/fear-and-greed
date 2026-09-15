@@ -118,6 +118,16 @@ func TestRRThreeExitSuiteFreezesFiveSourceCandidates(t *testing.T) {
 	}
 }
 
+func TestRRTwoExitSuiteFreezesFiveSourceCandidates(t *testing.T) {
+	adapters := RRTwoExitV1()
+	require.Len(t, adapters, 5)
+	for _, candidate := range adapters {
+		require.Len(t, candidate.Grid(), 1)
+		require.Equal(t, 2.0, candidate.Grid()[0].Values["target_risk_multiple"])
+		require.Contains(t, string(candidate.Metadata().Ref.Code), "rr2")
+	}
+}
+
 func TestRSIMeanReversionV1IsolatedAdapter(t *testing.T) {
 	adapters := RSIMeanReversionV1()
 	require.Len(t, adapters, 1)

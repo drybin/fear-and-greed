@@ -33,6 +33,11 @@ const (
 	EMAPullbackRR3Code                  protocolv2.StrategyCode = "ema-pullback-rr3-v1"
 	NR7TrendBreakoutRR3Code             protocolv2.StrategyCode = "nr7-trend-breakout-rr3-v1"
 	SpotFlowPullbackRR3Code             protocolv2.StrategyCode = "spot-flow-pullback-rr3-v1"
+	DailyLowZoneRR2Code                 protocolv2.StrategyCode = "daily-low-zone-rr2-v1"
+	DonchianBreakoutRR2Code             protocolv2.StrategyCode = "donchian-breakout-rr2-v1"
+	EMAPullbackRR2Code                  protocolv2.StrategyCode = "ema-pullback-rr2-v1"
+	NR7TrendBreakoutRR2Code             protocolv2.StrategyCode = "nr7-trend-breakout-rr2-v1"
+	SpotFlowPullbackRR2Code             protocolv2.StrategyCode = "spot-flow-pullback-rr2-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -191,6 +196,17 @@ func RRThreeExitV1() []Adapter {
 	}
 }
 
+// RRTwoExitV1 repeats the frozen RR3 source set with only a full 2R exit.
+func RRTwoExitV1() []Adapter {
+	return []Adapter{
+		rrTwoExitAdapter(dailyLowZoneV13(), "daily-low-zone-third-green-tp1pct", DailyLowZoneRR2Code, "Daily Low Zone RR2"),
+		rrTwoExitAdapter(donchianBreakoutV1(), "dc40-stop20", DonchianBreakoutRR2Code, "Donchian Breakout RR2"),
+		rrTwoExitAdapter(emaPullbackV1(), "ema50-stop20", EMAPullbackRR2Code, "EMA Pullback RR2"),
+		rrTwoExitAdapter(nr7(), "nr7-filter-1", NR7TrendBreakoutRR2Code, "NR7 Trend Breakout RR2"),
+		rrTwoExitAdapter(spotFlowPullbackV1(), "flow55-pullback3", SpotFlowPullbackRR2Code, "Spot Flow Pullback RR2"),
+	}
+}
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -246,7 +262,8 @@ func All() []Adapter {
 	all = append(all, EMAPullbackV1()...)
 	all = append(all, VolumeBreakoutV1()...)
 	all = append(all, SpotFlowPullbackV1()...)
-	return append(all, RRThreeExitV1()...)
+	all = append(all, RRThreeExitV1()...)
+	return append(all, RRTwoExitV1()...)
 }
 
 func spotFlowPullbackV1() Adapter {
