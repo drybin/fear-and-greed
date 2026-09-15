@@ -141,6 +141,8 @@ func researchSuite(name string) ([]candidates.Adapter, error) {
 		return candidates.VolumeBreakoutV1(), nil
 	case "spot-flow-pullback-v1":
 		return candidates.SpotFlowPullbackV1(), nil
+	case "rr-three-exit-v1":
+		return candidates.RRThreeExitV1(), nil
 	default:
 		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
 	}

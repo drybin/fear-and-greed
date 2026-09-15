@@ -238,6 +238,14 @@ func (a *account) enter(s CloseConfirmedSignal, c Candle, barIndex int) {
 		a.reject(s, c.Time, protocolv2.RejectionInvalidStop, map[string]float64{"entry_price": entry, "stop": s.Stop})
 		return
 	}
+	if s.TargetRiskMultiple != 0 {
+		target := protocolv2.RoundPrice(entry + s.TargetRiskMultiple*distance)
+		if !finite(target) || target <= entry {
+			a.reject(s, c.Time, protocolv2.RejectionInvalidTarget, map[string]float64{"entry_price": entry, "target_risk_multiple": s.TargetRiskMultiple})
+			return
+		}
+		s.Targets = []Target{{Name: "tp1", Price: target}}
+	}
 	equity := a.equityAt(c.Close)
 	riskQty := equity * a.engine.config.RiskPerTradePercent / 100 / distance
 	capQty := equity * a.engine.config.MaxNotionalPercent / 100 / entry

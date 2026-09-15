@@ -73,18 +73,19 @@ func (t Target) Validate() error {
 // The decision becomes available at SourceCandleTime + strategy timeframe and
 // can only fill from that timestamp onward.
 type CloseConfirmedSignal struct {
-	SignalID         string                 `json:"signal_id"`
-	Strategy         protocolv2.StrategyRef `json:"strategy"`
-	Symbol           protocolv2.Symbol      `json:"symbol"`
-	Timeframe        protocolv2.Timeframe   `json:"timeframe"`
-	SourceCandleTime time.Time              `json:"source_candle_time"`
-	Side             Side                   `json:"side"`
-	Stop             float64                `json:"stop"`
-	Targets          []Target               `json:"targets,omitempty"`
-	TargetPercent    float64                `json:"target_percent,omitempty"`
-	ExitAllAtTP1     bool                   `json:"exit_all_at_tp1,omitempty"`
-	TimeExitAt       time.Time              `json:"time_exit_at,omitempty"`
-	Diagnostics      map[string]float64     `json:"diagnostics,omitempty"`
+	SignalID           string                 `json:"signal_id"`
+	Strategy           protocolv2.StrategyRef `json:"strategy"`
+	Symbol             protocolv2.Symbol      `json:"symbol"`
+	Timeframe          protocolv2.Timeframe   `json:"timeframe"`
+	SourceCandleTime   time.Time              `json:"source_candle_time"`
+	Side               Side                   `json:"side"`
+	Stop               float64                `json:"stop"`
+	Targets            []Target               `json:"targets,omitempty"`
+	TargetPercent      float64                `json:"target_percent,omitempty"`
+	TargetRiskMultiple float64                `json:"target_risk_multiple,omitempty"`
+	ExitAllAtTP1       bool                   `json:"exit_all_at_tp1,omitempty"`
+	TimeExitAt         time.Time              `json:"time_exit_at,omitempty"`
+	Diagnostics        map[string]float64     `json:"diagnostics,omitempty"`
 }
 
 func (s CloseConfirmedSignal) Validate() error {
@@ -115,6 +116,14 @@ func (s CloseConfirmedSignal) Validate() error {
 		}
 		if len(s.Targets) != 0 {
 			return fmt.Errorf("execution: target percent cannot be combined with absolute targets")
+		}
+	}
+	if s.TargetRiskMultiple != 0 {
+		if math.IsNaN(s.TargetRiskMultiple) || math.IsInf(s.TargetRiskMultiple, 0) || s.TargetRiskMultiple <= 0 {
+			return fmt.Errorf("execution: target risk multiple must be finite and positive")
+		}
+		if s.TargetPercent != 0 || len(s.Targets) != 0 {
+			return fmt.Errorf("execution: target risk multiple cannot be combined with other targets")
 		}
 	}
 	if !s.TimeExitAt.IsZero() && s.TimeExitAt.Location() != time.UTC {

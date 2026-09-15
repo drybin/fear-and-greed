@@ -108,6 +108,16 @@ func TestDailyLowZoneV13UsesDynamicOnePercentTarget(t *testing.T) {
 	require.Empty(t, signal.Targets)
 }
 
+func TestRRThreeExitSuiteFreezesFiveSourceCandidates(t *testing.T) {
+	adapters := RRThreeExitV1()
+	require.Len(t, adapters, 5)
+	for _, candidate := range adapters {
+		require.Len(t, candidate.Grid(), 1)
+		require.Equal(t, 3.0, candidate.Grid()[0].Values["target_risk_multiple"])
+		require.Contains(t, string(candidate.Metadata().Ref.Code), "rr3")
+	}
+}
+
 func TestRSIMeanReversionV1IsolatedAdapter(t *testing.T) {
 	adapters := RSIMeanReversionV1()
 	require.Len(t, adapters, 1)

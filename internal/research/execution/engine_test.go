@@ -85,6 +85,22 @@ func TestEngineResolvesPercentTargetFromActualEntryFill(t *testing.T) {
 	require.Equal(t, execution.ExitReasonTarget, result.Trades[0].FinalExit.Reason)
 }
 
+func TestEngineResolvesRiskTargetFromActualEntryFill(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	config := engineConfig()
+	config.CommissionBPS, config.SlippageBPS = 0, 0
+	signal := engineSignal("risk-target", start, 90)
+	signal.TargetRiskMultiple, signal.ExitAllAtTP1 = 3, true
+	result := run(t, config, []execution.Candle{
+		bar(start, 100, 100, 100, 100),
+		bar(start.Add(time.Hour), 102, 138.1, 101, 137),
+	}, signal)
+	require.Len(t, result.Trades, 1)
+	require.Equal(t, 102.0, result.Trades[0].Entry.Price)
+	require.Equal(t, 138.0, result.Trades[0].FinalExit.ReferencePrice)
+	require.Equal(t, execution.ExitReasonTarget, result.Trades[0].FinalExit.Reason)
+}
+
 func TestEngineGapPolicyAndGapThroughStop(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	candles := []execution.Candle{

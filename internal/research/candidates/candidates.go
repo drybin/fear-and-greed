@@ -28,6 +28,11 @@ const (
 	EMAPullbackLongCode                 protocolv2.StrategyCode = "ema-pullback-long-v1"
 	VolumeBreakoutLongCode              protocolv2.StrategyCode = "volume-breakout-long-v1"
 	SpotFlowPullbackLongCode            protocolv2.StrategyCode = "spot-flow-pullback-long-v1"
+	DailyLowZoneRR3Code                 protocolv2.StrategyCode = "daily-low-zone-rr3-v1"
+	DonchianBreakoutRR3Code             protocolv2.StrategyCode = "donchian-breakout-rr3-v1"
+	EMAPullbackRR3Code                  protocolv2.StrategyCode = "ema-pullback-rr3-v1"
+	NR7TrendBreakoutRR3Code             protocolv2.StrategyCode = "nr7-trend-breakout-rr3-v1"
+	SpotFlowPullbackRR3Code             protocolv2.StrategyCode = "spot-flow-pullback-rr3-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -174,6 +179,18 @@ func VolumeBreakoutV1() []Adapter { return []Adapter{volumeBreakoutV1()} }
 // fields, isolated from the price-only strategy suites.
 func SpotFlowPullbackV1() []Adapter { return []Adapter{spotFlowPullbackV1()} }
 
+// RRThreeExitV1 keeps five previously tested entry and stop rules intact and
+// isolates a single exit-policy change: close the full position at 3R.
+func RRThreeExitV1() []Adapter {
+	return []Adapter{
+		rrThreeExitAdapter(dailyLowZoneV13(), "daily-low-zone-third-green-tp1pct", DailyLowZoneRR3Code, "Daily Low Zone RR3"),
+		rrThreeExitAdapter(donchianBreakoutV1(), "dc40-stop20", DonchianBreakoutRR3Code, "Donchian Breakout RR3"),
+		rrThreeExitAdapter(emaPullbackV1(), "ema50-stop20", EMAPullbackRR3Code, "EMA Pullback RR3"),
+		rrThreeExitAdapter(nr7(), "nr7-filter-1", NR7TrendBreakoutRR3Code, "NR7 Trend Breakout RR3"),
+		rrThreeExitAdapter(spotFlowPullbackV1(), "flow55-pullback3", SpotFlowPullbackRR3Code, "Spot Flow Pullback RR3"),
+	}
+}
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -228,7 +245,8 @@ func All() []Adapter {
 	all = append(all, CapitulationReversalV1()...)
 	all = append(all, EMAPullbackV1()...)
 	all = append(all, VolumeBreakoutV1()...)
-	return append(all, SpotFlowPullbackV1()...)
+	all = append(all, SpotFlowPullbackV1()...)
+	return append(all, RRThreeExitV1()...)
 }
 
 func spotFlowPullbackV1() Adapter {
