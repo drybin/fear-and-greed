@@ -145,6 +145,8 @@ func researchSuite(name string) ([]candidates.Adapter, error) {
 		return candidates.RRThreeExitV1(), nil
 	case "rr-two-exit-v1":
 		return candidates.RRTwoExitV1(), nil
+	case "local-low-reversal-v1":
+		return candidates.LocalLowReversalV1(), nil
 	default:
 		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
 	}

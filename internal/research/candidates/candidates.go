@@ -38,6 +38,7 @@ const (
 	EMAPullbackRR2Code                  protocolv2.StrategyCode = "ema-pullback-rr2-v1"
 	NR7TrendBreakoutRR2Code             protocolv2.StrategyCode = "nr7-trend-breakout-rr2-v1"
 	SpotFlowPullbackRR2Code             protocolv2.StrategyCode = "spot-flow-pullback-rr2-v1"
+	LocalLowReversalLongCode            protocolv2.StrategyCode = "local-low-reversal-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -207,6 +208,8 @@ func RRTwoExitV1() []Adapter {
 	}
 }
 
+func LocalLowReversalV1() []Adapter { return []Adapter{localLowReversalV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -263,7 +266,18 @@ func All() []Adapter {
 	all = append(all, VolumeBreakoutV1()...)
 	all = append(all, SpotFlowPullbackV1()...)
 	all = append(all, RRThreeExitV1()...)
-	return append(all, RRTwoExitV1()...)
+	all = append(all, RRTwoExitV1()...)
+	return append(all, LocalLowReversalV1()...)
+}
+
+func localLowReversalV1() Adapter {
+	grid := []ParameterCandidate{{ID: "low20-next-bar", Values: map[string]any{"lookback_hours": 20, "entry_delay_bars": 1}}}
+	return adapter{metadata: execution.StrategyMetadata{Ref: ref(LocalLowReversalLongCode, "v1.0.0"), Name: "Local Low Reversal v1", Timeframe: "1h", WarmupBars: 21, Description: "Buy at the next 1h open after a causal 20-hour low; stop at that low, partial 1R, final 2R, or 48-hour time exit."}, grid: grid, evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+		if id != "low20-next-bar" {
+			return nil, fmt.Errorf("unknown local low reversal candidate %q", id)
+		}
+		return strategy.LocalLowReversalV1Signals(candles), nil
+	}}
 }
 
 func spotFlowPullbackV1() Adapter {
