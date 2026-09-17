@@ -161,6 +161,8 @@ func prepareResearchCommand() *cli.Command {
 			&cli.StringFlag{Name: "cutoff", Required: true, Usage: "exclusive UTC cutoff date (YYYY-MM-DD)"},
 			&cli.StringFlag{Name: "workdir", Value: ".", Usage: "clean repository root"},
 			&cli.StringFlag{Name: "suite", Value: "core-v2", Usage: "research suite: core-v2, research-v3, daily-low-zone-v1_1, daily-low-zone-v1_2, daily-low-zone-v1_3, rsi-mean-reversion-v1, donchian-breakout-v1, bollinger-range-reversion-v1, capitulation-reversal-v1, ema-pullback-v1, volume-breakout-v1, spot-flow-pullback-v1, rr-three-exit-v1, rr-two-exit-v1, or local-low-reversal-v1"},
+			&cli.StringFlag{Name: "market", Value: "spot", Usage: "spot or futures (USD-M perpetual)"},
+			&cli.DurationFlag{Name: "input-interval", Value: time.Minute, Usage: "frozen input candle interval, e.g. 1m or 1h"},
 			&cli.Uint64Flag{Name: "seed", Value: 42, Usage: "frozen random-control seed"},
 		},
 		Action: func(c *cli.Context) error {
@@ -177,7 +179,7 @@ func prepareResearchCommand() *cli.Command {
 			}
 			m, err := orchestration.PrepareManifest(orchestration.PrepareManifestOptions{
 				SymbolsFile: c.String("symbols"), CandleDir: c.String("candle-dir"), OutputPath: c.String("manifest"),
-				Cutoff: cutoff, Source: source, Seed: c.Uint64("seed"), Suite: c.String("suite"),
+				Cutoff: cutoff, Source: source, Seed: c.Uint64("seed"), Suite: c.String("suite"), Market: c.String("market"), Interval: c.Duration("input-interval"),
 			})
 			if err != nil {
 				return err
@@ -367,7 +369,11 @@ func loadPhase(c *cli.Context) (manifest.Manifest, protocolv2.SHA256Hex, protoco
 	}
 	var store orchestration.CandleStore
 	if dir := strings.TrimSpace(c.String("candle-dir")); dir != "" {
-		store = orchestration.DirCandleStore{Dir: dir}
+		suffix := ""
+		if !m.Universe.Spot {
+			suffix = "_futures"
+		}
+		store = orchestration.DirCandleStore{Dir: dir, Suffix: suffix}
 	}
 	actualSource, err := manifest.GitRevision(c.String("workdir"))
 	if err != nil {

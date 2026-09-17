@@ -21,9 +21,10 @@ const (
 
 // Candle is one already-validated OHLC evaluation interval. Time is its open.
 type Candle struct {
-	Time       time.Time
-	Open, High float64
-	Low, Close float64
+	Time        time.Time
+	Open, High  float64
+	Low, Close  float64
+	FundingRate float64 // Applied once at this UTC funding timestamp when non-zero.
 }
 
 // Config freezes the execution inputs for one (strategy, symbol, fold)
@@ -88,8 +89,8 @@ type Result struct {
 	RealizedCash float64
 }
 
-// Engine owns one isolated long-only account. It is intentionally not a shared
-// capital portfolio simulator.
+// Engine owns one isolated account. It is intentionally not a shared-capital
+// portfolio simulator.
 type Engine struct{ config Config }
 
 func NewEngine(config Config) (*Engine, error) {
@@ -143,6 +144,9 @@ func (e *Engine) RunWithExits(candles []Candle, signals []CloseConfirmedSignal, 
 	pending := append([]CloseConfirmedSignal(nil), signals...)
 	pendingExits := append([]CloseConfirmedExitSignal(nil), exits...)
 	for barIndex, candle := range candles {
+		// A funding timestamp settles the position carried into this bar; a new
+		// entry at this open is not retroactively charged for the prior period.
+		a.applyFunding(candle)
 		pendingExits = a.exitSignalsAt(candle, pendingExits)
 		pending = a.entriesAt(candle, barIndex, pending)
 		a.exitsAt(candle, barIndex)
@@ -224,23 +228,23 @@ func (a *account) entriesAt(c Candle, barIndex int, pending []CloseConfirmedSign
 }
 
 func (a *account) enter(s CloseConfirmedSignal, c Candle, barIndex int) {
-	entry := a.buyPrice(c.Open)
+	entry := a.entryPrice(s.Side, c.Open)
 	if s.TargetPercent != 0 {
-		target := protocolv2.RoundPrice(entry * (1 + s.TargetPercent/100))
-		if !finite(target) || target <= entry {
+		target := protocolv2.RoundPrice(entry * targetPercentMultiplier(s.Side, s.TargetPercent))
+		if !finite(target) || !isTargetBeyondEntry(s.Side, target, entry) {
 			a.reject(s, c.Time, protocolv2.RejectionInvalidTarget, map[string]float64{"entry_price": entry, "target_percent": s.TargetPercent})
 			return
 		}
 		s.Targets = []Target{{Name: "tp1", Price: target}}
 	}
-	distance := entry - s.Stop
+	distance := riskDistance(s.Side, entry, s.Stop)
 	if !finite(distance) || distance <= 0 {
 		a.reject(s, c.Time, protocolv2.RejectionInvalidStop, map[string]float64{"entry_price": entry, "stop": s.Stop})
 		return
 	}
 	if s.TargetRiskMultiple != 0 {
-		target := protocolv2.RoundPrice(entry + s.TargetRiskMultiple*distance)
-		if !finite(target) || target <= entry {
+		target := protocolv2.RoundPrice(targetAtRiskMultiple(s.Side, entry, distance, s.TargetRiskMultiple))
+		if !finite(target) || !isTargetBeyondEntry(s.Side, target, entry) {
 			a.reject(s, c.Time, protocolv2.RejectionInvalidTarget, map[string]float64{"entry_price": entry, "target_risk_multiple": s.TargetRiskMultiple})
 			return
 		}
@@ -256,16 +260,20 @@ func (a *account) enter(s CloseConfirmedSignal, c Candle, barIndex int) {
 	}
 	notional := protocolv2.RoundFee(entry * qty)
 	commission := a.commission(notional)
-	if a.cash < protocolv2.RoundFee(notional+commission) {
+	if s.Side == SideLong && a.cash < protocolv2.RoundFee(notional+commission) {
 		a.reject(s, c.Time, protocolv2.RejectionInsufficientCash, map[string]float64{"cash": a.cash, "required_cash": protocolv2.RoundFee(notional + commission)})
 		return
 	}
-	a.cash = protocolv2.RoundFee(a.cash - notional - commission)
+	if s.Side == SideLong {
+		a.cash = protocolv2.RoundFee(a.cash - notional - commission)
+	} else {
+		a.cash = protocolv2.RoundFee(a.cash - commission)
+	}
 	a.commissions = protocolv2.RoundFee(a.commissions + commission)
-	a.slippage = protocolv2.RoundFee(a.slippage + protocolv2.RoundFee((entry-c.Open)*qty))
+	a.slippage = protocolv2.RoundFee(a.slippage + protocolv2.RoundFee(math.Abs(entry-c.Open)*qty))
 	intent := OrderIntent{IntentID: "intent-" + s.SignalID, SignalID: s.SignalID, Strategy: s.Strategy, Symbol: s.Symbol, Side: s.Side, SourceCandleTime: s.SourceCandleTime, EligibleAt: c.Time, Quantity: qty, Stop: s.Stop, Targets: s.Targets}
 	fill := EntryFill{PositionID: "position-" + s.SignalID, FillAudit: a.fillAudit("entry-"+s.SignalID, intent, c.Time, c.Open, entry, qty, commission)}
-	state := PositionState{PositionID: fill.PositionID, Strategy: s.Strategy, Symbol: s.Symbol, Side: SideLong, Status: PositionOpen, OpenedAt: c.Time, InitialQuantity: qty, RemainingQuantity: qty, AverageEntryPrice: entry, Stop: s.Stop}
+	state := PositionState{PositionID: fill.PositionID, Strategy: s.Strategy, Symbol: s.Symbol, Side: s.Side, Status: PositionOpen, OpenedAt: c.Time, InitialQuantity: qty, RemainingQuantity: qty, AverageEntryPrice: entry, Stop: s.Stop}
 	a.position = &openPosition{state: state, signal: s, entryBar: barIndex, trade: TradeState{TradeID: "trade-" + s.SignalID, PositionID: fill.PositionID, Status: TradeOpen, Entry: fill}}
 	a.audit = append(a.audit, AuditEvent{Time: c.Time, Kind: "entry_fill", SignalID: s.SignalID, Details: map[string]float64{"reference_price": c.Open, "price": entry, "quantity": qty, "commission": commission}})
 }
@@ -279,16 +287,16 @@ func (a *account) exitsAt(c Candle, barIndex int) {
 		a.exit(c, c.Open, p.state.RemainingQuantity, ExitReasonTime)
 		return
 	}
-	if c.Open <= p.state.Stop {
+	if hitStopAtOpen(p.state.Side, c.Open, p.state.Stop) {
 		a.exit(c, c.Open, p.state.RemainingQuantity, p.stopReason())
 		return
 	}
-	if c.Low <= p.state.Stop { // stop first when high also reaches a target.
+	if hitStopIntrabar(p.state.Side, c, p.state.Stop) { // Stop first when a target is also touched.
 		a.exit(c, p.state.Stop, p.state.RemainingQuantity, p.stopReason())
 		return
 	}
-	targets := sortedTargets(p.signal.Targets)
-	if len(targets) > 0 && !p.tp1Complete && c.High >= targets[0].Price {
+	targets := sortedTargets(p.state.Side, p.signal.Targets)
+	if len(targets) > 0 && !p.tp1Complete && hitTarget(p.state.Side, c, targets[0].Price) {
 		if p.signal.ExitAllAtTP1 {
 			a.exit(c, targets[0].Price, p.state.RemainingQuantity, ExitReasonTarget)
 			return
@@ -306,7 +314,7 @@ func (a *account) exitsAt(c Candle, barIndex int) {
 		}
 		return
 	}
-	if p.tp1Complete && len(targets) > 1 && c.High >= targets[1].Price {
+	if p.tp1Complete && len(targets) > 1 && hitTarget(p.state.Side, c, targets[1].Price) {
 		a.exit(c, targets[1].Price, p.state.RemainingQuantity, ExitReasonTarget)
 		return
 	}
@@ -335,14 +343,18 @@ func (a *account) exit(c Candle, reference, qty float64, reason ExitReason) {
 			qty = reconciled
 		}
 	}
-	price := a.sellPrice(reference)
+	price := a.exitPrice(p.state.Side, reference)
 	notional := protocolv2.RoundFee(price * qty)
 	commission := a.commission(notional)
-	a.cash = protocolv2.RoundFee(a.cash + notional - commission)
+	if p.state.Side == SideLong {
+		a.cash = protocolv2.RoundFee(a.cash + notional - commission)
+	} else {
+		a.cash = protocolv2.RoundFee(a.cash + protocolv2.RoundFee((p.state.AverageEntryPrice-price)*qty) - commission)
+	}
 	a.commissions = protocolv2.RoundFee(a.commissions + commission)
-	a.slippage = protocolv2.RoundFee(a.slippage + protocolv2.RoundFee((reference-price)*qty))
-	a.realized = protocolv2.RoundFee(a.realized + protocolv2.RoundFee((price-p.state.AverageEntryPrice)*qty) - commission)
-	intent := OrderIntent{IntentID: "intent-" + p.signal.SignalID, SignalID: p.signal.SignalID, Strategy: p.signal.Strategy, Symbol: p.signal.Symbol, Side: SideLong, SourceCandleTime: p.signal.SourceCandleTime, EligibleAt: c.Time, Quantity: qty, Stop: p.state.Stop}
+	a.slippage = protocolv2.RoundFee(a.slippage + protocolv2.RoundFee(math.Abs(reference-price)*qty))
+	a.realized = protocolv2.RoundFee(a.realized + protocolv2.RoundFee(realizedPnL(p.state.Side, p.state.AverageEntryPrice, price, qty)) - commission)
+	intent := OrderIntent{IntentID: "intent-" + p.signal.SignalID, SignalID: p.signal.SignalID, Strategy: p.signal.Strategy, Symbol: p.signal.Symbol, Side: p.state.Side, SourceCandleTime: p.signal.SourceCandleTime, EligibleAt: c.Time, Quantity: qty, Stop: p.state.Stop}
 	fill := a.fillAudit("exit-"+p.signal.SignalID+"-"+fmt.Sprint(len(p.trade.PartialExits)+1), intent, c.Time, reference, price, qty, commission)
 	p.state.RemainingQuantity = remaining
 	if remaining == 0 {
@@ -376,9 +388,14 @@ func (a *account) snapshot(t time.Time, mark float64) {
 	open := 0.0
 	unrealized := 0.0
 	if a.position != nil {
-		price := a.sellPrice(mark)
-		open = protocolv2.RoundFee(price * a.position.state.RemainingQuantity)
-		unrealized = protocolv2.RoundFee((price - a.position.state.AverageEntryPrice) * a.position.state.RemainingQuantity)
+		price := a.exitPrice(a.position.state.Side, mark)
+		if a.position.state.Side == SideLong {
+			open = protocolv2.RoundFee(price * a.position.state.RemainingQuantity)
+			unrealized = protocolv2.RoundFee((price - a.position.state.AverageEntryPrice) * a.position.state.RemainingQuantity)
+		} else {
+			unrealized = protocolv2.RoundFee((a.position.state.AverageEntryPrice - price) * a.position.state.RemainingQuantity)
+			open = unrealized
+		}
 	}
 	total := protocolv2.RoundFee(a.cash + open)
 	if total > a.peak {
@@ -395,12 +412,90 @@ func (a *account) equityAt(mark float64) float64 {
 	if a.position == nil {
 		return a.cash
 	}
-	return protocolv2.RoundFee(a.cash + a.sellPrice(mark)*a.position.state.RemainingQuantity)
+	price := a.exitPrice(a.position.state.Side, mark)
+	if a.position.state.Side == SideShort {
+		return protocolv2.RoundFee(a.cash + (a.position.state.AverageEntryPrice-price)*a.position.state.RemainingQuantity)
+	}
+	return protocolv2.RoundFee(a.cash + price*a.position.state.RemainingQuantity)
 }
 
 func (a *account) fillAudit(id string, intent OrderIntent, t time.Time, reference, price, qty, commission float64) FillAudit {
 	slippage := protocolv2.RoundFee(math.Abs(price-reference) * qty)
-	return FillAudit{FillID: id, IntentID: intent.IntentID, SignalID: intent.SignalID, Strategy: intent.Strategy, Symbol: intent.Symbol, Side: SideLong, SourceCandleTime: intent.SourceCandleTime, FillTime: t, ReferencePrice: protocolv2.RoundPrice(reference), Price: protocolv2.RoundPrice(price), Quantity: qty, Commission: commission, Slippage: slippage, CostProfile: a.engine.config.CostProfile, Audit: map[string]float64{"commission_bps": a.engine.config.CommissionBPS, "slippage_bps": a.engine.config.SlippageBPS}}
+	return FillAudit{FillID: id, IntentID: intent.IntentID, SignalID: intent.SignalID, Strategy: intent.Strategy, Symbol: intent.Symbol, Side: intent.Side, SourceCandleTime: intent.SourceCandleTime, FillTime: t, ReferencePrice: protocolv2.RoundPrice(reference), Price: protocolv2.RoundPrice(price), Quantity: qty, Commission: commission, Slippage: slippage, CostProfile: a.engine.config.CostProfile, Audit: map[string]float64{"commission_bps": a.engine.config.CommissionBPS, "slippage_bps": a.engine.config.SlippageBPS}}
+}
+
+func (a *account) applyFunding(c Candle) {
+	if a.position == nil || c.FundingRate == 0 {
+		return
+	}
+	notional := protocolv2.RoundFee(c.Open * a.position.state.RemainingQuantity)
+	amount := protocolv2.RoundFee(notional * c.FundingRate)
+	if a.position.state.Side == SideShort {
+		amount = -amount
+	}
+	a.cash = protocolv2.RoundFee(a.cash - amount)
+	a.audit = append(a.audit, AuditEvent{Time: c.Time, Kind: "funding", SignalID: a.position.signal.SignalID, Details: map[string]float64{"rate": c.FundingRate, "notional": notional, "payment": amount}})
+}
+
+func (a *account) entryPrice(side Side, reference float64) float64 {
+	if side == SideShort {
+		return a.sellPrice(reference)
+	}
+	return a.buyPrice(reference)
+}
+func (a *account) exitPrice(side Side, reference float64) float64 {
+	if side == SideShort {
+		return a.buyPrice(reference)
+	}
+	return a.sellPrice(reference)
+}
+func riskDistance(side Side, entry, stop float64) float64 {
+	if side == SideShort {
+		return stop - entry
+	}
+	return entry - stop
+}
+func targetPercentMultiplier(side Side, percent float64) float64 {
+	if side == SideShort {
+		return 1 - percent/100
+	}
+	return 1 + percent/100
+}
+func targetAtRiskMultiple(side Side, entry, distance, multiple float64) float64 {
+	if side == SideShort {
+		return entry - multiple*distance
+	}
+	return entry + multiple*distance
+}
+func isTargetBeyondEntry(side Side, target, entry float64) bool {
+	if side == SideShort {
+		return target > 0 && target < entry
+	}
+	return target > entry
+}
+func hitStopAtOpen(side Side, open, stop float64) bool {
+	if side == SideShort {
+		return open >= stop
+	}
+	return open <= stop
+}
+func hitStopIntrabar(side Side, c Candle, stop float64) bool {
+	if side == SideShort {
+		return c.High >= stop
+	}
+	return c.Low <= stop
+}
+func hitTarget(side Side, c Candle, target float64) bool {
+	if side == SideShort {
+		return c.Low <= target
+	}
+	return c.High >= target
+}
+func realizedPnL(side Side, entry, exit, qty float64) float64 {
+	if side == SideShort {
+		return (entry - exit) * qty
+	}
+	return (exit - entry) * qty
 }
 
 func (a *account) reject(s CloseConfirmedSignal, t time.Time, reason protocolv2.RejectionReason, diagnostics map[string]float64) {

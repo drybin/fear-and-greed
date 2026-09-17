@@ -81,6 +81,7 @@ var rrTwoExitV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
 }
 
 var localLowReversalV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{"local-low-reversal-long-v1": {}}
+var futuresLocalHighReversalV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{"local-high-reversal-short-v1": {}}
 
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation
 // scope after normal manifest validation. It rejects strategies reserved for
@@ -147,6 +148,10 @@ func ValidateLocalLowReversalV1StrategyCodes(strategies []Strategy) error {
 	return validateStrategySuite("local-low-reversal-v1", strategies, localLowReversalV1StrategyCodes)
 }
 
+func ValidateFuturesLocalHighReversalV1StrategyCodes(strategies []Strategy) error {
+	return validateStrategySuite("futures-local-high-reversal-v1", strategies, futuresLocalHighReversalV1StrategyCodes)
+}
+
 // ValidateSupportedStrategyCodes accepts one complete protocol suite, never a
 // mixture of historical core and new research candidates.
 func ValidateSupportedStrategyCodes(strategies []Strategy) error {
@@ -192,7 +197,10 @@ func ValidateSupportedStrategyCodes(strategies []Strategy) error {
 	if err := ValidateRRTwoExitV1StrategyCodes(strategies); err == nil {
 		return nil
 	}
-	return ValidateLocalLowReversalV1StrategyCodes(strategies)
+	if err := ValidateLocalLowReversalV1StrategyCodes(strategies); err == nil {
+		return nil
+	}
+	return ValidateFuturesLocalHighReversalV1StrategyCodes(strategies)
 }
 
 func validateStrategySuite(name string, strategies []Strategy, allowed map[protocolv2.StrategyCode]struct{}) error {
@@ -244,8 +252,9 @@ type SourceRevision struct {
 }
 
 type SymbolSnapshot struct {
-	Symbol       protocolv2.Symbol    `json:"symbol"`
-	CandleSHA256 protocolv2.SHA256Hex `json:"candle_sha256"`
+	Symbol        protocolv2.Symbol    `json:"symbol"`
+	CandleSHA256  protocolv2.SHA256Hex `json:"candle_sha256"`
+	FundingSHA256 protocolv2.SHA256Hex `json:"funding_sha256,omitempty"`
 }
 
 type UniverseSnapshot struct {
@@ -373,9 +382,6 @@ func validateUniverse(u UniverseSnapshot) error {
 	if strings.TrimSpace(u.Name) == "" || strings.TrimSpace(u.Exchange) == "" || strings.TrimSpace(u.QuoteAsset) == "" {
 		return fmt.Errorf("manifest: universe name, exchange, and quote_asset are required")
 	}
-	if !u.Spot {
-		return fmt.Errorf("manifest: universe must be spot")
-	}
 	if err := u.Provenance.Validate(); err != nil {
 		return err
 	}
@@ -389,6 +395,14 @@ func validateUniverse(u UniverseSnapshot) error {
 		}
 		if err := s.CandleSHA256.Validate(); err != nil {
 			return err
+		}
+		if !u.Spot && s.FundingSHA256 == "" {
+			return fmt.Errorf("manifest: futures symbol %q requires funding_sha256", s.Symbol)
+		}
+		if s.FundingSHA256 != "" {
+			if err := s.FundingSHA256.Validate(); err != nil {
+				return err
+			}
 		}
 		if seen[s.Symbol] {
 			return fmt.Errorf("manifest: duplicate universe symbol %q", s.Symbol)

@@ -101,6 +101,25 @@ func TestEngineResolvesRiskTargetFromActualEntryFill(t *testing.T) {
 	require.Equal(t, execution.ExitReasonTarget, result.Trades[0].FinalExit.Reason)
 }
 
+func TestEngineShortUsesCausalCoverAndFunding(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	config := engineConfig()
+	config.CommissionBPS, config.SlippageBPS, config.CloseAtFoldEnd = 0, 0, true
+	signal := engineSignal("short", start, 110, execution.Target{Name: "tp1", Price: 90})
+	signal.Side, signal.ExitAllAtTP1 = execution.SideShort, true
+	result := run(t, config, []execution.Candle{
+		bar(start, 100, 101, 99, 100),
+		bar(start.Add(time.Hour), 100, 101, 95, 96),
+		{Time: start.Add(2 * time.Hour), Open: 96, High: 97, Low: 89, Close: 90, FundingRate: 0.001},
+	}, signal)
+	require.Len(t, result.Trades, 1)
+	trade := result.Trades[0]
+	require.Equal(t, execution.SideShort, trade.Entry.Side)
+	require.Equal(t, execution.ExitReasonTarget, trade.FinalExit.Reason)
+	require.Greater(t, result.Equity[len(result.Equity)-1].TotalEquity, 10_000.0)
+	require.Contains(t, result.Audit[len(result.Audit)-2].Kind, "funding")
+}
+
 func TestEngineGapPolicyAndGapThroughStop(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	candles := []execution.Candle{

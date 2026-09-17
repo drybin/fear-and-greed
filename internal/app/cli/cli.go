@@ -32,6 +32,7 @@ func Run(config *config.Config) error {
 		command.NewHelloWorldCommand(cnt.Usecases.HelloWorld),
 		command.NewFearResearchCommand(cnt.Usecases.FearResearch),
 		command.NewFetchDataCommand(cnt.Usecases.FetchData),
+		command.NewFetchFundingCommand(cnt.Usecases.FetchFunding),
 		command.NewScanMarketsCommand(cnt.Usecases.ScanMarkets),
 		command.NewReportHTMLCommand(),
 		command.NewResearchValidateCommand(),

@@ -15,4 +15,5 @@ type Candle struct {
 	TakerBuyBaseVolume  float64
 	TakerBuyQuoteVolume float64
 	HasSpotFlow         bool
+	FundingRate         float64
 }

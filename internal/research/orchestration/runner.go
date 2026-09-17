@@ -32,23 +32,51 @@ type CandleStore interface {
 
 // DirCandleStore reads SYMBOL.csv files from a directory (fetch-data layout).
 type DirCandleStore struct {
-	Dir string
+	Dir    string
+	Suffix string
 }
 
 func (s DirCandleStore) Path(symbol protocolv2.Symbol) string {
-	return filepath.Join(s.Dir, string(symbol)+".csv")
+	return filepath.Join(s.Dir, string(symbol)+s.Suffix+".csv")
+}
+
+func (s DirCandleStore) FundingPath(symbol protocolv2.Symbol) string {
+	return filepath.Join(s.Dir, string(symbol)+s.Suffix+"_funding.csv")
 }
 
 func (s DirCandleStore) Load(symbol protocolv2.Symbol) ([]model.Candle, error) {
-	return csvdata.LoadKlines(s.Path(symbol))
+	candles, err := csvdata.LoadKlines(s.Path(symbol))
+	if err != nil || s.Suffix != "_futures" {
+		return candles, err
+	}
+	return s.withFunding(symbol, candles)
 }
 
 func (s DirCandleStore) LoadRange(symbol protocolv2.Symbol, start, end time.Time) ([]model.Candle, error) {
-	return csvdata.LoadKlinesRange(s.Path(symbol), start, end)
+	candles, err := csvdata.LoadKlinesRange(s.Path(symbol), start, end)
+	if err != nil || s.Suffix != "_futures" {
+		return candles, err
+	}
+	return s.withFunding(symbol, candles)
+}
+
+func (s DirCandleStore) withFunding(symbol protocolv2.Symbol, candles []model.Candle) ([]model.Candle, error) {
+	rates, err := csvdata.LoadFundingRates(s.FundingPath(symbol))
+	if err != nil {
+		return nil, fmt.Errorf("load funding %s: %w", symbol, err)
+	}
+	for i := range candles {
+		candles[i].FundingRate = rates[candles[i].OpenTime.UTC()]
+	}
+	return candles, nil
 }
 
 type rangeCandleStore interface {
 	LoadRange(protocolv2.Symbol, time.Time, time.Time) ([]model.Candle, error)
+}
+
+type fundingCandleStore interface {
+	FundingPath(protocolv2.Symbol) string
 }
 
 // UnitArtifact is the retained JSON payload for one symbol inside a unit.
@@ -346,6 +374,21 @@ func PreflightDevelopment(m manifest.Manifest, outputDir string, candles CandleS
 		if !inv.CoreUsable() {
 			return "", fmt.Errorf("orchestration: candle file for %s failed core quality checks", snap.Symbol)
 		}
+		if !m.Universe.Spot {
+			store, ok := candles.(fundingCandleStore)
+			if !ok {
+				return "", fmt.Errorf("orchestration: futures evaluation requires a funding-aware candle store")
+			}
+			raw, err := os.ReadFile(store.FundingPath(snap.Symbol))
+			if err != nil {
+				return "", err
+			}
+			actual := digest(raw)
+			if actual != snap.FundingSHA256 {
+				return "", fmt.Errorf("orchestration: funding fingerprint mismatch for %s", snap.Symbol)
+			}
+			hashMaterial += string(actual) + "\n"
+		}
 		rows = append(rows, row{Symbol: snap.Symbol, Inventory: inv, HashMatch: true, Expected: snap.CandleSHA256})
 		hashMaterial += string(inv.SHA256) + "\n"
 	}
@@ -541,7 +584,7 @@ func aggregateCandles(candles []model.Candle, interval time.Duration) []executio
 	for _, source := range candles {
 		bucket := source.OpenTime.UTC().Truncate(interval)
 		if len(out) == 0 || !out[len(out)-1].Time.Equal(bucket) {
-			out = append(out, execution.Candle{Time: bucket, Open: source.Open, High: source.High, Low: source.Low, Close: source.Close})
+			out = append(out, execution.Candle{Time: bucket, Open: source.Open, High: source.High, Low: source.Low, Close: source.Close, FundingRate: source.FundingRate})
 			continue
 		}
 		current := &out[len(out)-1]
@@ -552,6 +595,7 @@ func aggregateCandles(candles []model.Candle, interval time.Duration) []executio
 			current.Low = source.Low
 		}
 		current.Close = source.Close
+		current.FundingRate += source.FundingRate
 	}
 	return out
 }

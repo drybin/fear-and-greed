@@ -1,7 +1,9 @@
 package orchestration
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -21,6 +23,8 @@ type PrepareManifestOptions struct {
 	Source      manifest.SourceRevision
 	Seed        uint64
 	Suite       string
+	Market      string
+	Interval    time.Duration
 }
 
 // PrepareManifest fingerprints the frozen cohort and creates the immutable
@@ -44,22 +48,47 @@ func PrepareManifest(options PrepareManifestOptions) (manifest.Manifest, error) 
 		return manifest.Manifest{}, fmt.Errorf("orchestration: core manifest requires exactly 50 frozen symbols, got %d", len(snapshot.Symbols))
 	}
 
+	market := options.Market
+	if market == "" {
+		market = "spot"
+	}
+	futures := market == "futures"
+	if market != "spot" && !futures {
+		return manifest.Manifest{}, fmt.Errorf("orchestration: unknown market %q", market)
+	}
+	interval := options.Interval
+	if interval == 0 {
+		interval = time.Minute
+	}
+	suffix := ""
+	if futures {
+		suffix = "_futures"
+	}
 	symbols := make([]manifest.SymbolSnapshot, 0, len(snapshot.Symbols))
 	for _, symbol := range snapshot.Symbols {
-		inventory, err := eligibility.InventoryFile(filepath.Join(options.CandleDir, string(symbol)+".csv"))
+		inventory, err := eligibility.InventoryFile(filepath.Join(options.CandleDir, string(symbol)+suffix+".csv"))
 		if err != nil {
 			return manifest.Manifest{}, fmt.Errorf("orchestration: inventory %s: %w", symbol, err)
 		}
 		if !inventory.CoreUsable() {
 			return manifest.Manifest{}, fmt.Errorf("orchestration: candle file for %s failed core quality checks", symbol)
 		}
-		if inventory.Interval != time.Minute {
-			return manifest.Manifest{}, fmt.Errorf("orchestration: %s interval is %s, want 1m", symbol, inventory.Interval)
+		if inventory.Interval != interval {
+			return manifest.Manifest{}, fmt.Errorf("orchestration: %s interval is %s, want %s", symbol, inventory.Interval, interval)
 		}
 		if inventory.Range.End.Before(cutoff) {
 			return manifest.Manifest{}, fmt.Errorf("orchestration: %s ends at %s before cutoff %s", symbol, inventory.Range.End, cutoff)
 		}
-		symbols = append(symbols, manifest.SymbolSnapshot{Symbol: symbol, CandleSHA256: inventory.SHA256})
+		snap := manifest.SymbolSnapshot{Symbol: symbol, CandleSHA256: inventory.SHA256}
+		if futures {
+			raw, err := os.ReadFile(filepath.Join(options.CandleDir, string(symbol)+suffix+"_funding.csv"))
+			if err != nil {
+				return manifest.Manifest{}, fmt.Errorf("orchestration: funding %s: %w", symbol, err)
+			}
+			sum := sha256.Sum256(raw)
+			snap.FundingSHA256 = protocolv2.SHA256Hex(fmt.Sprintf("%x", sum))
+		}
+		symbols = append(symbols, snap)
 	}
 
 	adapters, err := researchSuite(options.Suite)
@@ -85,7 +114,7 @@ func PrepareManifest(options PrepareManifestOptions) (manifest.Manifest, error) 
 		Seed:            options.Seed,
 		Universe: manifest.UniverseSnapshot{
 			Name: snapshot.Name, Provenance: protocolv2.UniverseFrozenCurrentCohort,
-			Exchange: "binance", Spot: true, QuoteAsset: "USDT", Symbols: symbols,
+			Exchange: "binance", Spot: !futures, QuoteAsset: "USDT", Symbols: symbols,
 		},
 		Strategies: strategies,
 		Schedule: manifest.Schedule{
@@ -147,6 +176,8 @@ func researchSuite(name string) ([]candidates.Adapter, error) {
 		return candidates.RRTwoExitV1(), nil
 	case "local-low-reversal-v1":
 		return candidates.LocalLowReversalV1(), nil
+	case "futures-local-high-reversal-v1":
+		return candidates.FuturesLocalHighReversalV1(), nil
 	default:
 		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
 	}

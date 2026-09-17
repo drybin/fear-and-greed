@@ -17,6 +17,7 @@ type Usecases struct {
 	HelloWorld   *usecase.HelloWorld
 	FearResearch *usecase.FearResearch
 	FetchData    *usecase.FetchData
+	FetchFunding *usecase.FetchFunding
 	ScanMarkets  *usecase.ScanMarkets
 }
 
@@ -30,6 +31,7 @@ func NewContainer(
 			HelloWorld:   usecase.NewHelloWorldUsecase(),
 			FearResearch: usecase.NewFearResearchUsecase(),
 			FetchData:    usecase.NewFetchDataUsecase(binanceClient),
+			FetchFunding: usecase.NewFetchFundingUsecase(binanceClient),
 			ScanMarkets:  usecase.NewScanMarketsUsecase(),
 		},
 		Clean: func() {},

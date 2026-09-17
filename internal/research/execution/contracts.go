@@ -9,16 +9,17 @@ import (
 	"github.com/drybin/fear-and-greed/internal/research/protocolv2"
 )
 
-// Side is the direction of a spot order. Protocol-v2 core supports long-only
-// execution, but keeps the direction explicit in every audit record.
+// Side is the direction of an isolated position. Both directions use the same
+// causal fills and cost model; only price movement and cash accounting differ.
 type Side string
 
 const (
-	SideLong Side = "long"
+	SideLong  Side = "long"
+	SideShort Side = "short"
 )
 
 func (s Side) Validate() error {
-	if s != SideLong {
+	if s != SideLong && s != SideShort {
 		return fmt.Errorf("execution: unsupported side %q", s)
 	}
 	return nil
@@ -652,8 +653,13 @@ func validateDiagnostics(values map[string]float64) error {
 	return nil
 }
 
-func sortedTargets(targets []Target) []Target {
+func sortedTargets(side Side, targets []Target) []Target {
 	out := append([]Target(nil), targets...)
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool {
+		if side == SideShort {
+			return out[i].Price > out[j].Price
+		}
+		return out[i].Price < out[j].Price
+	})
 	return out
 }

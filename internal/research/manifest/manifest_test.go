@@ -16,7 +16,11 @@ func TestManifestRequiredFieldsAndInvalidCombinations(t *testing.T) {
 	require.NoError(t, m.Validate())
 
 	m.Universe.Spot = false
-	require.ErrorContains(t, m.Validate(), "spot")
+	require.ErrorContains(t, m.Validate(), "funding_sha256")
+	for i := range m.Universe.Symbols {
+		m.Universe.Symbols[i].FundingSHA256 = protocolv2.SHA256Hex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	}
+	require.NoError(t, m.Validate())
 
 	m = validManifest(t)
 	m.Schedule.Test.Start = m.Schedule.Train.End.Add(-time.Hour)

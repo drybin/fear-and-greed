@@ -39,6 +39,7 @@ const (
 	NR7TrendBreakoutRR2Code             protocolv2.StrategyCode = "nr7-trend-breakout-rr2-v1"
 	SpotFlowPullbackRR2Code             protocolv2.StrategyCode = "spot-flow-pullback-rr2-v1"
 	LocalLowReversalLongCode            protocolv2.StrategyCode = "local-low-reversal-long-v1"
+	LocalHighReversalShortCode          protocolv2.StrategyCode = "local-high-reversal-short-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -61,6 +62,7 @@ type Adapter interface {
 type adapter struct {
 	metadata execution.StrategyMetadata
 	grid     []ParameterCandidate
+	side     execution.Side
 	evaluate func(protocolv2.ParameterCandidateID, []model.Candle) ([]strategy.EntrySignal, error)
 }
 
@@ -120,7 +122,7 @@ func (a adapter) signal(symbol protocolv2.Symbol, candidate protocolv2.Parameter
 	signal := execution.CloseConfirmedSignal{
 		SignalID: fmt.Sprintf("%s-%s-%d-%d", a.metadata.Ref.Code, candidate, index, entry.Time.Unix()),
 		Strategy: a.metadata.Ref, Symbol: symbol, Timeframe: a.metadata.Timeframe,
-		SourceCandleTime: entry.Time.UTC(), Side: execution.SideLong,
+		SourceCandleTime: entry.Time.UTC(), Side: a.signalSide(),
 		Stop:          protocolv2.RoundPrice(entry.Stop),
 		Targets:       targets,
 		TargetPercent: entry.TargetPercent,
@@ -132,6 +134,13 @@ func (a adapter) signal(symbol protocolv2.Symbol, candidate protocolv2.Parameter
 		return execution.CloseConfirmedSignal{}, fmt.Errorf("candidates: %s signal: %w", a.metadata.Ref, err)
 	}
 	return signal, nil
+}
+
+func (a adapter) signalSide() execution.Side {
+	if a.side == "" {
+		return execution.SideLong
+	}
+	return a.side
 }
 
 // Core returns the complete, deliberately closed candidate set.
@@ -210,6 +219,9 @@ func RRTwoExitV1() []Adapter {
 
 func LocalLowReversalV1() []Adapter { return []Adapter{localLowReversalV1()} }
 
+// FuturesLocalHighReversalV1 is deliberately independent of every spot suite.
+func FuturesLocalHighReversalV1() []Adapter { return []Adapter{localHighReversalV1()} }
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -267,7 +279,8 @@ func All() []Adapter {
 	all = append(all, SpotFlowPullbackV1()...)
 	all = append(all, RRThreeExitV1()...)
 	all = append(all, RRTwoExitV1()...)
-	return append(all, LocalLowReversalV1()...)
+	all = append(all, LocalLowReversalV1()...)
+	return append(all, FuturesLocalHighReversalV1()...)
 }
 
 func localLowReversalV1() Adapter {
@@ -277,6 +290,16 @@ func localLowReversalV1() Adapter {
 			return nil, fmt.Errorf("unknown local low reversal candidate %q", id)
 		}
 		return strategy.LocalLowReversalV1Signals(candles), nil
+	}}
+}
+
+func localHighReversalV1() Adapter {
+	grid := []ParameterCandidate{{ID: "high20-next-bar", Values: map[string]any{"lookback_hours": 20, "entry_delay_bars": 1, "side": "short"}}}
+	return adapter{metadata: execution.StrategyMetadata{Ref: ref(LocalHighReversalShortCode, "v1.0.0"), Name: "Futures Local High Reversal v1", Timeframe: "1h", WarmupBars: 21, Description: "Short at the next 1h open after a causal 20-hour high; stop at that high, partial 1R, final 2R, or 48-hour time exit. Funding is applied from Binance USD-M history."}, grid: grid, side: execution.SideShort, evaluate: func(id protocolv2.ParameterCandidateID, candles []model.Candle) ([]strategy.EntrySignal, error) {
+		if id != "high20-next-bar" {
+			return nil, fmt.Errorf("unknown local high reversal candidate %q", id)
+		}
+		return strategy.LocalHighReversalV1Signals(candles), nil
 	}}
 }
 
