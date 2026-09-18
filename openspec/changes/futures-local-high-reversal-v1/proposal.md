@@ -14,7 +14,10 @@ high as stop, take half at 1R and the rest at 2R, and close after 48 hours.
 
 ## Data And Costs
 
-- Frozen current top-50 USDT symbols, Binance USD-M perpetuals only.
+- Frozen 50-contract Binance USD-M cohort, derived from the existing CMC
+  cohort where an eligible perpetual exists. `1000PEPEUSDT` and
+  `1000SHIBUSDT` are contract aliases; `HYPEUSDT` replaces GRAM because GRAM
+  lacks the historical depth required by the protocol schedule.
 - Separate `*_futures.csv` hourly kline files and `*_futures_funding.csv`
   funding files.
 - Every futures manifest fingerprints both files per symbol.
