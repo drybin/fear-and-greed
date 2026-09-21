@@ -120,6 +120,24 @@ func TestEngineShortUsesCausalCoverAndFunding(t *testing.T) {
 	require.Contains(t, result.Audit[len(result.Audit)-2].Kind, "funding")
 }
 
+func TestEngineLiquidatesShortBeforeNegativeEquity(t *testing.T) {
+	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	config := engineConfig()
+	config.CloseAtFoldEnd = true
+	signal := engineSignal("liquidation", start, 110)
+	signal.Side = execution.SideShort
+	result := run(t, config, []execution.Candle{
+		bar(start, 100, 101, 99, 100),
+		bar(start.Add(time.Hour), 100, 101, 99, 100),
+		bar(start.Add(2*time.Hour), 2_000, 2_100, 1_900, 2_000),
+	}, signal)
+	require.Len(t, result.Trades, 1)
+	require.Equal(t, execution.ExitReasonLiquidation, result.Trades[0].FinalExit.Reason)
+	for _, snapshot := range result.Equity {
+		require.NoError(t, snapshot.Validate())
+	}
+}
+
 func TestEngineGapPolicyAndGapThroughStop(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	candles := []execution.Candle{

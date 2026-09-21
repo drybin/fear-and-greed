@@ -6,7 +6,10 @@ The engine supports `long` and `short` sides. A short opens with adverse sell
 slippage, closes with adverse buy slippage, and realizes `(entry - exit) *
 quantity`. Its equity is isolated initial cash plus marked short PnL; entry
 proceeds are never counted as free cash. Stops trigger upward and targets
-trigger downward. Intrabar stop-first remains unchanged.
+trigger downward. Intrabar stop-first remains unchanged. If an upward gap
+would exhaust the isolated account before an executable stop, the engine closes
+at the bankruptcy price including closing commission and records `liquidation`;
+the account never carries negative equity.
 
 ## Causality
 

@@ -125,7 +125,6 @@ func normalizeTrade(t execution.TradeState, risk float64) (Trade, error) {
 		return Trade{}, fmt.Errorf("metrics: invalid trade %s: %w", t.TradeID, err)
 	}
 	result := Trade{ID: t.TradeID, Symbol: string(t.Entry.Symbol), OpenedAt: t.Entry.FillTime}
-	entry := t.Entry.Price*t.Entry.Quantity + t.Entry.Commission
 	proceeds, commissions := 0.0, t.Entry.Commission
 	exits := append([]execution.PartialExitFill(nil), t.PartialExits...)
 	if t.FinalExit != nil {
@@ -135,8 +134,14 @@ func normalizeTrade(t execution.TradeState, risk float64) (Trade, error) {
 		proceeds += fill.Price * fill.Quantity
 		commissions += fill.Commission
 	}
-	result.GrossPnL = protocolv2.RoundFee(proceeds - t.Entry.Price*t.Entry.Quantity)
-	result.NetPnL = protocolv2.RoundFee(proceeds - entry - (commissions - t.Entry.Commission))
+	entryNotional := t.Entry.Price * t.Entry.Quantity
+	if t.Entry.Side == execution.SideShort {
+		result.GrossPnL = protocolv2.RoundFee(entryNotional - proceeds)
+		result.NetPnL = protocolv2.RoundFee(result.GrossPnL - commissions)
+	} else {
+		result.GrossPnL = protocolv2.RoundFee(proceeds - entryNotional)
+		result.NetPnL = protocolv2.RoundFee(result.GrossPnL - commissions)
+	}
 	if t.FinalExit != nil {
 		closed := t.FinalExit.FillTime
 		result.ClosedAt = &closed

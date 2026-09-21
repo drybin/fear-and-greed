@@ -637,6 +637,9 @@ func riskByTrade(trades []execution.TradeState, signals []execution.CloseConfirm
 			continue
 		}
 		risk := (trade.Entry.Price - signal.Stop) * trade.Entry.Quantity
+		if signal.Side == execution.SideShort {
+			risk = (signal.Stop - trade.Entry.Price) * trade.Entry.Quantity
+		}
 		if risk > 0 {
 			out[trade.TradeID] = risk
 		}

@@ -283,6 +283,12 @@ func (a *account) exitsAt(c Candle, barIndex int) {
 	if p == nil {
 		return
 	}
+	if p.state.Side == SideShort {
+		if price, liquidated := a.shortLiquidationPrice(p); liquidated && (c.Open >= price || c.High >= price) {
+			a.exit(c, price, p.state.RemainingQuantity, ExitReasonLiquidation)
+			return
+		}
+	}
 	if !p.signal.TimeExitAt.IsZero() && !c.Time.Before(p.signal.TimeExitAt) {
 		a.exit(c, c.Open, p.state.RemainingQuantity, ExitReasonTime)
 		return
@@ -350,6 +356,9 @@ func (a *account) exit(c Candle, reference, qty float64, reason ExitReason) {
 		a.cash = protocolv2.RoundFee(a.cash + notional - commission)
 	} else {
 		a.cash = protocolv2.RoundFee(a.cash + protocolv2.RoundFee((p.state.AverageEntryPrice-price)*qty) - commission)
+		if reason == ExitReasonLiquidation && a.cash < 0 {
+			a.cash = 0
+		}
 	}
 	a.commissions = protocolv2.RoundFee(a.commissions + commission)
 	a.slippage = protocolv2.RoundFee(a.slippage + protocolv2.RoundFee(math.Abs(reference-price)*qty))
@@ -368,6 +377,19 @@ func (a *account) exit(c Candle, reference, qty float64, reason ExitReason) {
 	}
 	p.trade.PartialExits = append(p.trade.PartialExits, PartialExitFill{PositionID: p.state.PositionID, Reason: reason, FillAudit: fill})
 	a.audit = append(a.audit, AuditEvent{Time: c.Time, Kind: "partial_exit", SignalID: p.signal.SignalID, Details: map[string]float64{"price": price, "quantity": qty, "commission": commission}})
+}
+
+// shortLiquidationPrice is the isolated-account bankruptcy price, including
+// the closing commission. A price gap beyond the stop must not create debt in
+// an isolated-account experiment.
+func (a *account) shortLiquidationPrice(p *openPosition) (float64, bool) {
+	qty := p.state.RemainingQuantity
+	if qty <= 0 || a.cash <= 0 {
+		return 0, false
+	}
+	feeRate := a.engine.config.CommissionBPS / 10000
+	price := protocolv2.RoundPrice((a.cash + p.state.AverageEntryPrice*qty) / (qty * (1 + feeRate)))
+	return price, price > p.state.AverageEntryPrice
 }
 
 func finalExitQuantity(p *openPosition) float64 {

@@ -226,17 +226,18 @@ func (i OrderIntent) Validate() error {
 type ExitReason string
 
 const (
-	ExitReasonStop      ExitReason = "stop"
-	ExitReasonTarget    ExitReason = "target"
-	ExitReasonBreakeven ExitReason = "breakeven"
-	ExitReasonTime      ExitReason = "time"
-	ExitReasonFoldEnd   ExitReason = "fold_end"
-	ExitReasonSignal    ExitReason = "signal"
+	ExitReasonStop        ExitReason = "stop"
+	ExitReasonTarget      ExitReason = "target"
+	ExitReasonBreakeven   ExitReason = "breakeven"
+	ExitReasonTime        ExitReason = "time"
+	ExitReasonFoldEnd     ExitReason = "fold_end"
+	ExitReasonSignal      ExitReason = "signal"
+	ExitReasonLiquidation ExitReason = "liquidation"
 )
 
 func (r ExitReason) Validate() error {
 	switch r {
-	case ExitReasonStop, ExitReasonTarget, ExitReasonBreakeven, ExitReasonTime, ExitReasonFoldEnd, ExitReasonSignal:
+	case ExitReasonStop, ExitReasonTarget, ExitReasonBreakeven, ExitReasonTime, ExitReasonFoldEnd, ExitReasonSignal, ExitReasonLiquidation:
 		return nil
 	default:
 		return fmt.Errorf("execution: invalid exit reason %q", r)
@@ -517,8 +518,10 @@ func (s EquitySnapshot) Validate() error {
 			return err
 		}
 	}
-	if s.Cash < 0 || s.OpenPositionValue < 0 || s.TotalEquity < 0 {
-		return fmt.Errorf("execution: cash, open position value, and total equity must not be negative")
+	// A short position's marked value is its unrealized PnL in the isolated
+	// account, so it can be negative while cash and total equity remain valid.
+	if s.Cash < 0 || s.TotalEquity < 0 {
+		return fmt.Errorf("execution: cash and total equity must not be negative")
 	}
 	if err := validateNonNegativeFee("commission costs", s.CommissionCosts); err != nil {
 		return err
