@@ -82,6 +82,7 @@ var rrTwoExitV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{
 
 var localLowReversalV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{"local-low-reversal-long-v1": {}}
 var futuresLocalHighReversalV1StrategyCodes = map[protocolv2.StrategyCode]struct{}{"local-high-reversal-short-v1": {}}
+var futuresVolumeReversalRR3V1StrategyCodes = map[protocolv2.StrategyCode]struct{}{"futures-volume-reversal-long-v1": {}}
 
 // ValidateCoreStrategyCodes applies the deliberately narrow core-validation
 // scope after normal manifest validation. It rejects strategies reserved for
@@ -152,6 +153,10 @@ func ValidateFuturesLocalHighReversalV1StrategyCodes(strategies []Strategy) erro
 	return validateStrategySuite("futures-local-high-reversal-v1", strategies, futuresLocalHighReversalV1StrategyCodes)
 }
 
+func ValidateFuturesVolumeReversalRR3V1StrategyCodes(strategies []Strategy) error {
+	return validateStrategySuite("futures-volume-reversal-rr3-v1", strategies, futuresVolumeReversalRR3V1StrategyCodes)
+}
+
 // ValidateSupportedStrategyCodes accepts one complete protocol suite, never a
 // mixture of historical core and new research candidates.
 func ValidateSupportedStrategyCodes(strategies []Strategy) error {
@@ -200,7 +205,10 @@ func ValidateSupportedStrategyCodes(strategies []Strategy) error {
 	if err := ValidateLocalLowReversalV1StrategyCodes(strategies); err == nil {
 		return nil
 	}
-	return ValidateFuturesLocalHighReversalV1StrategyCodes(strategies)
+	if err := ValidateFuturesLocalHighReversalV1StrategyCodes(strategies); err == nil {
+		return nil
+	}
+	return ValidateFuturesVolumeReversalRR3V1StrategyCodes(strategies)
 }
 
 func validateStrategySuite(name string, strategies []Strategy, allowed map[protocolv2.StrategyCode]struct{}) error {

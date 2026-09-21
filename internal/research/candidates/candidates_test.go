@@ -118,6 +118,15 @@ func TestRRThreeExitSuiteFreezesFiveSourceCandidates(t *testing.T) {
 	}
 }
 
+func TestFuturesVolumeReversalRR3V1IsolatedAdapter(t *testing.T) {
+	adapters := FuturesVolumeReversalRR3V1()
+	require.Len(t, adapters, 1)
+	adapter := adapters[0]
+	require.Equal(t, FuturesVolumeReversalLongCode, adapter.Metadata().Ref.Code)
+	require.Equal(t, protocolv2.Timeframe("1h"), adapter.Metadata().Timeframe)
+	require.Equal(t, []ParameterCandidate{{ID: "drop4-vol2", Values: map[string]any{"target_risk_multiple": 3.0}}}, adapter.Grid())
+}
+
 func TestRRTwoExitSuiteFreezesFiveSourceCandidates(t *testing.T) {
 	adapters := RRTwoExitV1()
 	require.Len(t, adapters, 5)

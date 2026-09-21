@@ -178,6 +178,8 @@ func researchSuite(name string) ([]candidates.Adapter, error) {
 		return candidates.LocalLowReversalV1(), nil
 	case "futures-local-high-reversal-v1":
 		return candidates.FuturesLocalHighReversalV1(), nil
+	case "futures-volume-reversal-rr3-v1":
+		return candidates.FuturesVolumeReversalRR3V1(), nil
 	default:
 		return nil, fmt.Errorf("orchestration: unknown research suite %q", name)
 	}

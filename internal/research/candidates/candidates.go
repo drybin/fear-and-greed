@@ -40,6 +40,7 @@ const (
 	SpotFlowPullbackRR2Code             protocolv2.StrategyCode = "spot-flow-pullback-rr2-v1"
 	LocalLowReversalLongCode            protocolv2.StrategyCode = "local-low-reversal-long-v1"
 	LocalHighReversalShortCode          protocolv2.StrategyCode = "local-high-reversal-short-v1"
+	FuturesVolumeReversalLongCode       protocolv2.StrategyCode = "futures-volume-reversal-long-v1"
 	DailyLowZoneCode                    protocolv2.StrategyCode = "daily-low-zone-v1"
 )
 
@@ -222,6 +223,12 @@ func LocalLowReversalV1() []Adapter { return []Adapter{localLowReversalV1()} }
 // FuturesLocalHighReversalV1 is deliberately independent of every spot suite.
 func FuturesLocalHighReversalV1() []Adapter { return []Adapter{localHighReversalV1()} }
 
+// FuturesVolumeReversalRR3V1 isolates a high-volume sell-off and causal
+// recovery long under USD-M funding and a fixed full 3R exit.
+func FuturesVolumeReversalRR3V1() []Adapter {
+	return []Adapter{rrThreeExitAdapter(capitulationReversalV1(), "drop4-vol2", FuturesVolumeReversalLongCode, "Futures Volume Reversal RR3 v1")}
+}
+
 func dailyLowZone() Adapter {
 	grid := []ParameterCandidate{{ID: "daily-low-zone", Values: map[string]any{"time_exit_days": 2}}}
 	return adapter{
@@ -280,7 +287,8 @@ func All() []Adapter {
 	all = append(all, RRThreeExitV1()...)
 	all = append(all, RRTwoExitV1()...)
 	all = append(all, LocalLowReversalV1()...)
-	return append(all, FuturesLocalHighReversalV1()...)
+	all = append(all, FuturesLocalHighReversalV1()...)
+	return append(all, FuturesVolumeReversalRR3V1()...)
 }
 
 func localLowReversalV1() Adapter {
