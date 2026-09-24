@@ -8,9 +8,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/drybin/fear-and-greed/internal/domain/model"
+	"github.com/drybin/fear-and-greed/internal/infrastructure/csvdata"
+	"github.com/drybin/fear-and-greed/internal/research/btcleadlag"
+	"github.com/drybin/fear-and-greed/internal/research/eligibility"
 	"github.com/drybin/fear-and-greed/internal/research/manifest"
 	"github.com/drybin/fear-and-greed/internal/research/orchestration"
 	"github.com/drybin/fear-and-greed/internal/research/portfolio"
@@ -33,8 +38,91 @@ func NewResearchValidateCommand() *cli.Command {
 			finalResearchCommand(),
 			preparePortfolioCommand(),
 			runPortfolioCommand(),
+			btcLeadLagCommand(),
 		},
 	}
+}
+
+func btcLeadLagCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "btc-lead-lag",
+		Usage: "measure post-impulse directional returns of alts after completed BTC 1h candles",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "symbols", Required: true, Usage: "frozen symbol snapshot file"},
+			&cli.StringFlag{Name: "candle-dir", Required: true, Usage: "directory containing SYMBOL_futures.csv files"},
+			&cli.StringFlag{Name: "output", Required: true, Usage: "JSON report output path"},
+			&cli.StringFlag{Name: "start", Usage: "optional inclusive UTC date (YYYY-MM-DD)"},
+			&cli.StringFlag{Name: "end", Usage: "optional exclusive UTC date (YYYY-MM-DD)"},
+			&cli.Float64Flag{Name: "impulse-percent", Value: 1, Usage: "absolute BTC 1h open-to-close impulse threshold in percent"},
+			&cli.StringFlag{Name: "suffix", Value: "_futures", Usage: "candle filename suffix, e.g. _futures or empty"},
+		},
+		Action: func(c *cli.Context) error {
+			start, end, err := leadLagRange(c.String("start"), c.String("end"))
+			if err != nil {
+				return err
+			}
+			snapshot, err := eligibility.LoadFrozenSnapshot(c.String("symbols"), "btc-lead-lag", time.Unix(1, 0).UTC())
+			if err != nil {
+				return err
+			}
+			load := func(symbol string) ([]model.Candle, error) {
+				path := filepath.Join(c.String("candle-dir"), symbol+c.String("suffix")+".csv")
+				if start.IsZero() {
+					return csvdata.LoadKlines(path)
+				}
+				return csvdata.LoadKlinesRange(path, start, end)
+			}
+			btc, err := load("BTCUSDT")
+			if err != nil {
+				return fmt.Errorf("load BTCUSDT: %w", err)
+			}
+			alts := make(map[string][]model.Candle, len(snapshot.Symbols))
+			for _, symbol := range snapshot.Symbols {
+				if symbol == "BTCUSDT" {
+					continue
+				}
+				candles, loadErr := load(string(symbol))
+				if loadErr != nil {
+					return fmt.Errorf("load %s: %w", symbol, loadErr)
+				}
+				alts[string(symbol)] = candles
+			}
+			report, err := btcleadlag.Analyze(btc, alts, btcleadlag.Config{ImpulseThreshold: c.Float64("impulse-percent") / 100})
+			if err != nil {
+				return err
+			}
+			raw, err := json.MarshalIndent(report, "", "  ")
+			if err != nil {
+				return fmt.Errorf("encode BTC lead-lag report: %w", err)
+			}
+			if err := os.MkdirAll(filepath.Dir(c.String("output")), 0o755); err != nil {
+				return fmt.Errorf("create report directory: %w", err)
+			}
+			if err := os.WriteFile(c.String("output"), append(raw, '\n'), 0o644); err != nil {
+				return fmt.Errorf("write BTC lead-lag report: %w", err)
+			}
+			_, _ = fmt.Fprintf(c.App.Writer, "BTC lead-lag report: %s; BTC up events=%d, BTC down events=%d\n", c.String("output"), report.Aggregate.Up.Events, report.Aggregate.Down.Events)
+			return nil
+		},
+	}
+}
+
+func leadLagRange(startRaw, endRaw string) (time.Time, time.Time, error) {
+	if startRaw == "" && endRaw == "" {
+		return time.Time{}, time.Time{}, nil
+	}
+	if startRaw == "" || endRaw == "" {
+		return time.Time{}, time.Time{}, fmt.Errorf("BTC lead-lag range requires both --start and --end")
+	}
+	start, err := time.ParseInLocation("2006-01-02", startRaw, time.UTC)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid BTC lead-lag --start: %w", err)
+	}
+	end, err := time.ParseInLocation("2006-01-02", endRaw, time.UTC)
+	if err != nil || !start.Before(end) {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid BTC lead-lag --end")
+	}
+	return start, end, nil
 }
 
 func preparePortfolioCommand() *cli.Command {
