@@ -37,13 +37,15 @@ type SymbolReport struct {
 }
 
 type Report struct {
-	SchemaVersion       string         `json:"schema_version"`
-	GeneratedAt         time.Time      `json:"generated_at"`
-	ImpulseThreshold    float64        `json:"btc_impulse_threshold"`
-	EntryRule           string         `json:"entry_rule"`
-	SurvivorshipWarning string         `json:"survivorship_warning"`
-	Symbols             []SymbolReport `json:"symbols"`
-	Aggregate           SymbolReport   `json:"aggregate"`
+	SchemaVersion        string         `json:"schema_version"`
+	GeneratedAt          time.Time      `json:"generated_at"`
+	ImpulseThreshold     float64        `json:"btc_impulse_threshold"`
+	BTCUpImpulseEvents   int            `json:"btc_up_impulse_events"`
+	BTCDownImpulseEvents int            `json:"btc_down_impulse_events"`
+	EntryRule            string         `json:"entry_rule"`
+	SurvivorshipWarning  string         `json:"survivorship_warning"`
+	Symbols              []SymbolReport `json:"symbols"`
+	Aggregate            SymbolReport   `json:"aggregate"`
 }
 
 type btcEvent struct {
@@ -73,6 +75,13 @@ func Analyze(btc []model.Candle, alts map[string][]model.Candle, config Config) 
 		EntryRule:           "BTC impulse is known only after its 1h candle closes; each alt return starts at the next synchronized 1h open and ends at the close after the stated horizon.",
 		SurvivorshipWarning: "Frozen-current-cohort results describe this frozen watchlist tested backward; they do not establish historical top-N performance.",
 		Symbols:             make([]SymbolReport, 0, len(alts)),
+	}
+	for _, event := range events {
+		if event.direction > 0 {
+			report.BTCUpImpulseEvents++
+		} else {
+			report.BTCDownImpulseEvents++
+		}
 	}
 	keys := make([]string, 0, len(alts))
 	for symbol := range alts {

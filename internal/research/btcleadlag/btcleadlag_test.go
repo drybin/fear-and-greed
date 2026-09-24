@@ -23,6 +23,8 @@ func TestAnalyzeUsesNextOpenAfterCompletedBTCImpulse(t *testing.T) {
 	report, err := Analyze(btc, map[string][]model.Candle{"ALTUSDT": alt}, Config{ImpulseThreshold: .01, Horizons: []int{1, 2}})
 	require.NoError(t, err)
 	require.Len(t, report.Symbols, 1)
+	require.Equal(t, 1, report.BTCUpImpulseEvents)
+	require.Equal(t, 0, report.BTCDownImpulseEvents)
 	require.Equal(t, 1, report.Symbols[0].Up.Events)
 	require.InDelta(t, 0.05, report.Symbols[0].Up.Horizons[0].MeanReturn, 1e-9)
 	require.InDelta(t, 0.1, report.Symbols[0].Up.Horizons[1].MeanReturn, 1e-9)

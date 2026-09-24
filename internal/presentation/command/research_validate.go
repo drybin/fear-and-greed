@@ -101,7 +101,7 @@ func btcLeadLagCommand() *cli.Command {
 			if err := os.WriteFile(c.String("output"), append(raw, '\n'), 0o644); err != nil {
 				return fmt.Errorf("write BTC lead-lag report: %w", err)
 			}
-			_, _ = fmt.Fprintf(c.App.Writer, "BTC lead-lag report: %s; BTC up events=%d, BTC down events=%d\n", c.String("output"), report.Aggregate.Up.Events, report.Aggregate.Down.Events)
+			_, _ = fmt.Fprintf(c.App.Writer, "BTC lead-lag report: %s; BTC impulses up=%d down=%d, aggregate 1h observations up=%d down=%d\n", c.String("output"), report.BTCUpImpulseEvents, report.BTCDownImpulseEvents, report.Aggregate.Up.Events, report.Aggregate.Down.Events)
 			return nil
 		},
 	}
