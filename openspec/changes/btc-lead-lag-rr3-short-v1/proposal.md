@@ -10,3 +10,10 @@ hours. Use the existing base futures commission and slippage model.
 
 This is exploratory confirmation on the same data that identified the symbols;
 it cannot authorize deployment or a holdout decision.
+
+## Follow-up robustness check
+
+After the exploratory result, freeze `INJUSDT` as the only symbol and report
+the unchanged rule separately over the three pre-holdout protocol-v2 test
+windows. Do not use the prior locked holdout as validation because it was
+already inspected by the diagnostic.
