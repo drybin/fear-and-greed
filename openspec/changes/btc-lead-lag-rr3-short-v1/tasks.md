@@ -4,4 +4,6 @@
 - [x] Apply the base futures commission and slippage model.
 - [x] Add an exploratory workflow for the five diagnostic-selected symbols.
 - [x] Add an INJ-only time-split robustness workflow across three pre-holdout windows.
+- [x] Add the same three-window robustness workflow for all five exploratory symbols.
 - [ ] Run the INJ walk-forward workflow on the VPS and document the outcome.
+- [ ] Run the all-symbol walk-forward workflow on the VPS and compare fold consistency.
