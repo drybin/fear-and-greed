@@ -60,8 +60,9 @@ func btcLeadLagRR3Command() *cli.Command {
 			if err != nil {
 				return err
 			}
+			store := orchestration.DirCandleStore{Dir: c.String("candle-dir"), Suffix: "_futures"}
 			load := func(symbol string) ([]model.Candle, error) {
-				return csvdata.LoadKlinesRange(filepath.Join(c.String("candle-dir"), symbol+"_futures.csv"), start, end)
+				return store.LoadRange(protocolv2.Symbol(symbol), start, end)
 			}
 			btc, err := load("BTCUSDT")
 			if err != nil {
