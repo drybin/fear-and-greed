@@ -39,6 +39,62 @@ func NewResearchValidateCommand() *cli.Command {
 			preparePortfolioCommand(),
 			runPortfolioCommand(),
 			btcLeadLagCommand(),
+			btcLeadLagRR3Command(),
+		},
+	}
+}
+
+func btcLeadLagRR3Command() *cli.Command {
+	return &cli.Command{
+		Name: "btc-lead-lag-rr3", Usage: "backtest a fixed BTC-down to selected-alt short rule at 3R",
+		Flags: []cli.Flag{
+			&cli.StringFlag{Name: "candle-dir", Required: true},
+			&cli.StringFlag{Name: "output", Required: true},
+			&cli.StringFlag{Name: "symbols", Value: "OPUSDT,INJUSDT,UNIUSDT,TIAUSDT,APTUSDT"},
+			&cli.StringFlag{Name: "start", Required: true},
+			&cli.StringFlag{Name: "end", Required: true},
+			&cli.Float64Flag{Name: "impulse-percent", Value: 1},
+		},
+		Action: func(c *cli.Context) error {
+			start, end, err := leadLagRange(c.String("start"), c.String("end"))
+			if err != nil {
+				return err
+			}
+			load := func(symbol string) ([]model.Candle, error) {
+				return csvdata.LoadKlinesRange(filepath.Join(c.String("candle-dir"), symbol+"_futures.csv"), start, end)
+			}
+			btc, err := load("BTCUSDT")
+			if err != nil {
+				return fmt.Errorf("load BTCUSDT: %w", err)
+			}
+			alts := map[string][]model.Candle{}
+			for _, symbol := range strings.Split(c.String("symbols"), ",") {
+				symbol = strings.TrimSpace(symbol)
+				if symbol == "" {
+					continue
+				}
+				candles, loadErr := load(symbol)
+				if loadErr != nil {
+					return fmt.Errorf("load %s: %w", symbol, loadErr)
+				}
+				alts[symbol] = candles
+			}
+			report, err := btcleadlag.ShortRR3(btc, alts, c.Float64("impulse-percent")/100)
+			if err != nil {
+				return err
+			}
+			raw, err := json.MarshalIndent(report, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(c.String("output")), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(c.String("output"), append(raw, '\n'), 0o644); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(c.App.Writer, "BTC lead-lag RR3 report: %s\n", c.String("output"))
+			return nil
 		},
 	}
 }
